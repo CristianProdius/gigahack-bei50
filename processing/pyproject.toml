@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "siret3"
 version = "0.1.0"
-description = "Siret3 vineyard spatial pipeline: tiles, CVAT 1.1, measurements (EPSG:32635), closed route."
+description = "Sireț3 vineyard spatial pipeline: tiles, CVAT 1.1, measurements (EPSG:32635), closed route."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

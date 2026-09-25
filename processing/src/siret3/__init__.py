@@ -1,4 +1,4 @@
-"""Siret3 vineyard processing. Measurements are planar EPSG:32635."""
+"""Sireț3 vineyard processing. Measurements are planar EPSG:32635."""
 
 WORK_CRS = "EPSG:32635"
 TILE_NAME_RE = r"^siret3_r(\d{3})_c(\d{3})\.tif$"

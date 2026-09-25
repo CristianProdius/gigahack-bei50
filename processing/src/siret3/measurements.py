@@ -68,6 +68,6 @@ def write_csv(items: list[ProjectedPoly], out_csv: Path) -> None:
         "centroid_y",
     ]
     with out_csv.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=fieldnames=fieldnames)
+        w = csv.DictWriter(fh, fieldnames=fieldnames)
         w.writeheader()
         w.writerows(rows)
