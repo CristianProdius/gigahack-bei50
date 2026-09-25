@@ -1,0 +1,13 @@
+# Riseholme-derived YOLO-seg dataset. Convert COCO with:
+#   from ultralytics.data.converter import convert_coco
+#   convert_coco(labels_dir="riseholme/annotations", save_dir="datasets/riseholme-yolo", use_segments=True)
+path: datasets/riseholme-yolo
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: vineyard
+  1: vine_row
+  2: pole
+  3: trunk

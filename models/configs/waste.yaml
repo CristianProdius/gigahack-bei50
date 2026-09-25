@@ -1,0 +1,7 @@
+# DroneWaste collapsed to a single waste class for Marcaj bboxes.
+path: datasets/dronewaste-yolo
+train: images/train
+val: images/val
+
+names:
+  0: waste
