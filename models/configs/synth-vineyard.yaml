@@ -1,0 +1,9 @@
+# Tiny synthetic set for CPU dry-run (no Riseholme unpack required).
+# python models/make_synth_yolo.py
+path: datasets/synth-vineyard-yolo
+train: images/train
+val: images/val
+
+names:
+  0: vineyard
+  1: vine_row
