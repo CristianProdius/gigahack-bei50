@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Siret3 vineyard map",
+  title: "Sireț3 vineyard map",
   description:
-    "Marcaj vineyard viewer: Siret3 ortho, IDs, planar measurements, closed inspection walk.",
+    "Marcaj vineyard viewer: Sireț3 ortho, IDs, planar measurements, closed inspection walk.",
 };
 
 export default function RootLayout({

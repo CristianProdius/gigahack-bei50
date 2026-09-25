@@ -1,4 +1,4 @@
-# Siret3 processing
+# Sireț3 processing
 
 Python spatial pipeline. All lengths and areas are planar in **EPSG:32635**. No terrain correction.
 
