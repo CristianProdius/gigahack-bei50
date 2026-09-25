@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 
 const SIRET3_XYZ =
   "https://api.imagery.hotosm.org/raster/collections/openaerialmap/items/683060c4025981aa411253c8/tiles/WebMercatorQuad/{z}/{x}/{y}?assets=visual";
@@ -12,9 +9,7 @@ const SIRET3_XYZ =
 const OFFICIAL_START: [number, number] = [28.7073776, 47.1230335];
 
 type Status = "loading" | "ready" | "error" | "empty";
-
 type Pick = { kind: string; id?: string; extra?: string };
-
 type Totals = {
   vineyard: number;
   row: number;
@@ -27,6 +22,28 @@ type Totals = {
   inspectorM?: string;
   farmerM?: string;
 };
+
+type LayerKey = "vineyard" | "interrow" | "row" | "waste" | "forbidden" | "inspector" | "farmer";
+
+const LAYER_MAP: Record<LayerKey, string[]> = {
+  vineyard: ["vineyard-fill"],
+  interrow: ["interrow-fill"],
+  row: ["row-line"],
+  waste: ["waste-fill"],
+  forbidden: ["forbidden-fill"],
+  inspector: ["inspector-line"],
+  farmer: ["farmer-line"],
+};
+
+const LAYERS: Array<{ key: LayerKey; label: string; swatch: string; hint: string }> = [
+  { key: "inspector", label: "Inspector walk", swatch: "#438bff", hint: "Gaps + waste" },
+  { key: "farmer", label: "Farmer walk", swatch: "#f05d55", hint: "Waste only" },
+  { key: "vineyard", label: "Canopies", swatch: "#166534", hint: "vineyard polygons" },
+  { key: "row", label: "Rows", swatch: "#d1fb55", hint: "row axes" },
+  { key: "interrow", label: "Inter-rows", swatch: "#a3e635", hint: "passable ground" },
+  { key: "waste", label: "Waste", swatch: "#ffa443", hint: "boxes" },
+  { key: "forbidden", label: "Forbidden", swatch: "#b91c1c", hint: "do not walk" },
+];
 
 function parseCsv(text: string): Totals {
   const lines = text.trim().split(/\r?\n/);
@@ -53,15 +70,43 @@ function parseCsv(text: string): Totals {
   return out;
 }
 
+function fmtM(value?: string) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (Number.isNaN(n)) return value;
+  return `${n.toLocaleString("en-US", { maximumFractionDigits: 1 })} m`;
+}
+
+function fmtHa(value?: string) {
+  if (value == null || value === "") return "—";
+  return `${value} ha`;
+}
+
+function applyLayerVisibility(map: import("maplibre-gl").Map, layers: Record<LayerKey, boolean>) {
+  for (const [key, ids] of Object.entries(LAYER_MAP) as Array<[LayerKey, string[]]>) {
+    const vis = layers[key] ? "visible" : "none";
+    for (const id of ids) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+    }
+  }
+}
+
 export function VineyardMap() {
   const ref = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import("maplibre-gl").Map | undefined>(undefined);
   const [status, setStatus] = useState<Status>("loading");
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
   const [picked, setPicked] = useState<Pick | null>(null);
   const [reload, setReload] = useState(0);
-  const [showInspector, setShowInspector] = useState(true);
-  const [showFarmer, setShowFarmer] = useState(true);
+  const [layers, setLayers] = useState<Record<LayerKey, boolean>>({
+    vineyard: true,
+    interrow: true,
+    row: true,
+    waste: true,
+    forbidden: true,
+    inspector: true,
+    farmer: true,
+  });
   const [totals, setTotals] = useState<Totals>({ vineyard: 0, row: 0, waste: 0 });
 
   useEffect(() => {
@@ -73,10 +118,8 @@ export function VineyardMap() {
       setError("");
       try {
         const maplibre = await import("maplibre-gl");
-        await import("maplibre-gl/dist/maplibre-gl.css");
         if (!ref.current || cancelled) return;
-        // Cursor/Electron and some Next workers reject the default blob worker URL.
-        maplibre.setWorkerCount(0);
+        maplibre.config.WORKER_URL = `${window.location.origin}/maplibre-gl-worker.mjs`;
 
         const [sample, inspector, farmer, csvText] = await Promise.all([
           fetch("/layers/sample.geojson").then((r) => {
@@ -98,7 +141,7 @@ export function VineyardMap() {
         const parsed = csvText ? parseCsv(csvText) : { vineyard: 0, row: 0, waste: 0 };
         const inspectorM = inspector.features?.[0]?.properties?.length_m;
         const farmerM = farmer.features?.[0]?.properties?.length_m;
-        const c: Totals = {
+        setTotals({
           vineyard: parsed.vineyard || feats.filter((f) => f.properties?.kind === "vineyard").length,
           row: parsed.row || feats.filter((f) => f.properties?.kind === "row").length,
           waste: parsed.waste || feats.filter((f) => f.properties?.kind === "waste").length,
@@ -109,9 +152,8 @@ export function VineyardMap() {
           rowLengthM: parsed.rowLengthM,
           inspectorM: inspectorM != null ? String(inspectorM) : undefined,
           farmerM: farmerM != null ? String(farmerM) : undefined,
-        };
-        setTotals(c);
-        if (!feats.length) setStatus("empty");
+        });
+        setStatus(feats.length ? "ready" : "empty");
 
         map = new maplibre.Map({
           container: ref.current,
@@ -141,10 +183,9 @@ export function VineyardMap() {
           attributionControl: true,
         });
         mapRef.current = map;
-
         map.on("error", (ev) => {
-          const msg = ev.error?.message || "Map failed to load";
-          if (msg.includes("siret3")) return;
+          const msg = ev.error?.message || "";
+          if (msg.includes("Worker") || msg.includes("actors") || msg.includes("siret3") || msg.includes("Failed to fetch")) return;
         });
 
         map.on("load", () => {
@@ -171,60 +212,58 @@ export function VineyardMap() {
             type: "fill",
             source: "sample",
             filter: ["==", ["get", "kind"], "vineyard"],
-            paint: { "fill-color": "#166534", "fill-opacity": 0.28 },
+            paint: { "fill-color": "#166534", "fill-opacity": 0.32 },
           });
           map.addLayer({
             id: "interrow-fill",
             type: "fill",
             source: "sample",
             filter: ["==", ["get", "kind"], "interrow_area"],
-            paint: { "fill-color": "#a3e635", "fill-opacity": 0.25 },
+            paint: { "fill-color": "#a3e635", "fill-opacity": 0.22 },
           });
           map.addLayer({
             id: "forbidden-fill",
             type: "fill",
             source: "sample",
             filter: ["==", ["get", "kind"], "forbidden"],
-            paint: { "fill-color": "#b91c1c", "fill-opacity": 0.35 },
+            paint: { "fill-color": "#b91c1c", "fill-opacity": 0.4 },
           });
           map.addLayer({
             id: "waste-fill",
             type: "fill",
             source: "sample",
             filter: ["==", ["get", "kind"], "waste"],
-            paint: { "fill-color": "#ea580c", "fill-opacity": 0.7 },
+            paint: { "fill-color": "#ffa443", "fill-opacity": 0.75 },
           });
           map.addLayer({
             id: "row-line",
             type: "line",
             source: "sample",
             filter: ["==", ["get", "kind"], "row"],
-            paint: { "line-color": "#14532d", "line-width": 2.4 },
+            paint: { "line-color": "#d1fb55", "line-width": 2.2 },
           });
           map.addLayer({
             id: "inspector-line",
             type: "line",
             source: "inspector",
             filter: ["==", ["get", "kind"], "route"],
-            paint: { "line-color": "#1d4ed8", "line-width": 3.2, "line-dasharray": [1.4, 1] },
-            layout: { visibility: showInspector ? "visible" : "none" },
+            paint: { "line-color": "#438bff", "line-width": 3.2, "line-dasharray": [1.6, 1] },
           });
           map.addLayer({
             id: "farmer-line",
             type: "line",
             source: "farmer",
             filter: ["==", ["get", "kind"], "route"],
-            paint: { "line-color": "#dc2626", "line-width": 3, "line-dasharray": [0.8, 1.2] },
-            layout: { visibility: showFarmer ? "visible" : "none" },
+            paint: { "line-color": "#f05d55", "line-width": 2.8, "line-dasharray": [0.7, 1.3] },
           });
           map.addLayer({
             id: "start-pt",
             type: "circle",
             source: "start",
-            paint: { "circle-color": "#1d4ed8", "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
+            paint: { "circle-color": "#438bff", "circle-radius": 7, "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
           });
 
-          for (const id of ["vineyard-fill", "interrow-fill", "waste-fill", "row-line", "inspector-line", "farmer-line"]) {
+          for (const id of ["vineyard-fill", "interrow-fill", "waste-fill", "row-line", "inspector-line", "farmer-line", "start-pt"]) {
             map.on("click", id, (e) => {
               const f = e.features?.[0];
               if (!f) return;
@@ -236,12 +275,19 @@ export function VineyardMap() {
                     ? `${props.length_m} m`
                     : props.interrow_cover
                       ? String(props.interrow_cover)
-                      : undefined;
-              setPicked({ kind: String(props.kind || id), id: props.id ? String(props.id) : props.role ? String(props.role) : undefined, extra });
+                      : props.kind === "start"
+                        ? "Official start · 47.1230335 N, 28.7073776 E"
+                        : undefined;
+              setPicked({
+                kind: String(props.kind || id),
+                id: props.id ? String(props.id) : props.role ? String(props.role) : undefined,
+                extra,
+              });
             });
           }
 
-          setStatus(feats.length ? "ready" : "empty");
+          applyLayerVisibility(map, layers);
+
         });
       } catch (err) {
         if (cancelled) return;
@@ -256,83 +302,149 @@ export function VineyardMap() {
       mapRef.current = undefined;
       map?.remove();
     };
+    // layers snapshot is applied on load; later toggles use the second effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map?.getLayer("inspector-line")) return;
-    map.setLayoutProperty("inspector-line", "visibility", showInspector ? "visible" : "none");
-    map.setLayoutProperty("farmer-line", "visibility", showFarmer ? "visible" : "none");
-  }, [showInspector, showFarmer]);
+    if (!map || !map.isStyleLoaded()) return;
+    applyLayerVisibility(map, layers);
+  }, [layers]);
+
+  function toggle(key: LayerKey) {
+    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function recenter() {
+    mapRef.current?.flyTo({ center: OFFICIAL_START, zoom: 16.6 });
+  }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-      <Card className="order-2 flex w-full shrink-0 flex-col gap-3 p-4 lg:order-1 lg:w-80">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="amber">SAMPLE layers</Badge>
-          <Badge tone="green">EPSG:32635 metres</Badge>
+    <div className="relative isolate h-dvh min-h-[36rem] overflow-hidden bg-[#111614] text-[#e8eee9]">
+      <div ref={ref} className="absolute inset-0" style={{ zIndex: 0 }} />
+
+      {status === "loading" && (
+        <div className="absolute inset-0 grid place-items-center bg-black/35 text-sm" style={{ zIndex: 10 }}>
+          Loading Sireț3 layers…
         </div>
-        <p className="text-sm text-stone-600">
-          Official start 47.1230335 N, 28.7073776 E. Inspector walk (blue) visits gaps and waste. Farmer walk (red) collects waste only. Replace layers after the Marcaj export.
-        </p>
-        <div className="flex flex-col gap-1 text-sm">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={showInspector} onChange={(e) => setShowInspector(e.target.checked)} />
-            Inspector (blue){totals.inspectorM ? ` · ${totals.inspectorM} m` : ""}
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={showFarmer} onChange={(e) => setShowFarmer(e.target.checked)} />
-            Farmer (red){totals.farmerM ? ` · ${totals.farmerM} m` : ""}
-          </label>
-        </div>
-        {status === "loading" && <p className="text-sm text-stone-500">Loading map and layers…</p>}
-        {status === "empty" && (
-          <p className="text-sm text-stone-500">No features in the GeoJSON. Drop a Marcaj export into <code>web/public/layers/</code>.</p>
-        )}
-        {status === "error" && (
-          <p className="text-sm text-red-700">
-            {error}. Check network access to OpenAerialMap and refresh.
-          </p>
-        )}
-        {status === "ready" && (
-          <ul className="text-sm text-stone-700">
-            <li>{totals.nBlocks ?? totals.vineyard} block(s) / {totals.vineyard} canopy polygon(s)</li>
-            <li>{totals.nRows ?? totals.row} row(s)</li>
-            <li>{totals.waste} waste box(es)</li>
-            {totals.canopyHa && <li>Canopy {totals.canopyHa} ha</li>}
-            {totals.interrowHa && <li>Inter-row {totals.interrowHa} ha</li>}
-            {totals.rowLengthM && <li>Row length {totals.rowLengthM} m</li>}
-          </ul>
-        )}
-        {picked && (
-          <div className="rounded-md bg-stone-50 p-3 text-sm">
-            <div className="font-medium">{picked.kind}</div>
-            {picked.id && <div>ID {picked.id}</div>}
-            {picked.extra && <div>{picked.extra}</div>}
+      )}
+
+      <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3 sm:p-4" style={{ zIndex: 20 }}>
+        <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2 shadow-md">
+          <span className="grid size-7 place-items-center rounded-full bg-[var(--lime)] text-xs font-bold text-[#152e11]">S3</span>
+          <div>
+            <h1 className="text-balance text-sm font-semibold text-white">Sireț3 vineyard map</h1>
+            <p className="text-pretty text-[11px] text-white/65">Marcaj · EPSG:32635 · 27 Sep 15:00</p>
           </div>
-        )}
-        <div className="mt-auto flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setReload((n) => n + 1)}>
-            Reload layers
-          </Button>
-          <a
-            className="inline-flex items-center text-sm text-emerald-800 underline"
-            href="https://api.imagery.hotosm.org/stac/collections/openaerialmap/items/683060c4025981aa411253c8"
-            target="_blank"
-            rel="noreferrer"
+        </div>
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
+          <span className="rounded-full bg-amber-200 px-2.5 py-1 text-[11px] font-semibold text-amber-950">SAMPLE</span>
+          <button
+            type="button"
+            onClick={recenter}
+            className="rounded-full border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-1.5 text-xs font-medium text-white"
           >
-            Sireț3 STAC
-          </a>
+            Official start
+          </button>
+          <button
+            type="button"
+            onClick={() => setReload((n) => n + 1)}
+            className="rounded-full bg-[var(--lime)] px-3 py-1.5 text-xs font-semibold text-[#152e11]"
+          >
+            Reload
+          </button>
         </div>
-      </Card>
-      <div className="relative order-1 min-h-[320px] flex-1 overflow-hidden rounded-xl border border-stone-200 lg:order-2 lg:min-h-[640px]">
-        <div ref={ref} className="absolute inset-0" />
-        {status === "loading" && (
-          <div className="absolute inset-0 grid place-items-center bg-stone-100/70 text-sm text-stone-600">
-            Loading Sireț3…
-          </div>
+      </header>
+
+      <aside className="absolute bottom-3 left-3 top-20 flex w-[min(100%-1.5rem,20rem)] flex-col gap-2 overflow-y-auto sm:top-24" style={{ zIndex: 10 }}>
+        <section className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] p-3 shadow-md">
+          <p className="text-[11px] font-semibold uppercase text-white/55">Layers</p>
+          <ul className="mt-2 flex flex-col">
+            {LAYERS.map((item) => (
+              <li key={item.key}>
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-white/5">
+                  <input
+                    type="checkbox"
+                    checked={layers[item.key]}
+                    onChange={() => toggle(item.key)}
+                    className="size-4 accent-[var(--lime)]"
+                  />
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: item.swatch }} />
+                  <span className="min-w-0 flex-1 truncate text-white">{item.label}</span>
+                  <span className="tabular-nums text-[11px] text-white/50">
+                    {item.key === "inspector" ? fmtM(totals.inspectorM) : item.key === "farmer" ? fmtM(totals.farmerM) : item.hint}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] p-3 shadow-md">
+          <p className="text-[11px] font-semibold uppercase text-white/55">Measurements</p>
+          {status === "error" && (
+            <p className="mt-2 text-pretty text-sm text-red-300">
+              {error}. Check OpenAerialMap and reload.
+            </p>
+          )}
+          {status === "empty" && (
+            <p className="mt-2 text-pretty text-sm text-white/70">
+              No features. Drop a Marcaj export into <code>web/public/layers/</code>.
+            </p>
+          )}
+          {(status === "ready" || status === "loading") && (
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+              <div>
+                <dt className="text-[11px] text-white/50">Blocks</dt>
+                <dd className="tabular-nums font-medium">{totals.nBlocks ?? totals.vineyard}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-white/50">Rows</dt>
+                <dd className="tabular-nums font-medium">{totals.nRows ?? totals.row}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-white/50">Canopy</dt>
+                <dd className="tabular-nums font-medium">{fmtHa(totals.canopyHa)}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-white/50">Inter-row</dt>
+                <dd className="tabular-nums font-medium">{fmtHa(totals.interrowHa)}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-[11px] text-white/50">Row length</dt>
+                <dd className="tabular-nums font-medium">{fmtM(totals.rowLengthM)}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-white/50">Inspector</dt>
+                <dd className="tabular-nums font-medium text-[var(--blue)]">{fmtM(totals.inspectorM)}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-white/50">Farmer</dt>
+                <dd className="tabular-nums font-medium text-[var(--red)]">{fmtM(totals.farmerM)}</dd>
+              </div>
+            </dl>
+          )}
+        </section>
+
+        {picked && (
+          <section className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] p-3 shadow-md">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase text-white/55">Selected</p>
+              <button type="button" onClick={() => setPicked(null)} className="text-xs text-white/60">
+                Clear
+              </button>
+            </div>
+            <p className="mt-1 font-medium text-white">{picked.kind}</p>
+            {picked.id && <p className="tabular-nums text-sm text-white/80">ID {picked.id}</p>}
+            {picked.extra && <p className="text-pretty text-sm text-white/70">{picked.extra}</p>}
+          </section>
         )}
-      </div>
+
+        <p className="px-1 text-pretty text-[11px] text-white/55">
+          Official start 47.1230335 N, 28.7073776 E. Inspector (blue) visits gaps and waste. Farmer (red) collects waste only.
+        </p>
+      </aside>
     </div>
   );
 }
