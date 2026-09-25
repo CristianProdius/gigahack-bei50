@@ -154,3 +154,4 @@ web/  layers + counts + lengths
 - `data/challenge/03_docs/Vineyard_AI_Field_Challenge_description.pdf`
 - `data/challenge/03_docs/Vineyard_AI_annotation_rules.pdf`
 - `data/challenge/03_docs/Marcaj_quick_start_for_teams.pdf`
+- `data/challenge/03_docs/Marcaj_Siret3_Dataset_Brief_EN.pdf` (imagery card; [`siret3-dataset.md`](siret3-dataset.md))

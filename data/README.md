@@ -7,8 +7,8 @@ Official Marcaj pack: [`challenge/README.md`](challenge/README.md). Agent orient
 | `data/challenge/01_tiles/*.zip` | 311 challenge GeoTIFFs, five parts (gitignored). EPSG:32635, 0.025 m/px, 2048×2048. |
 | `data/challenge/01_tiles/overview.png` | Tile grid and START marker. |
 | `data/challenge/02_route/*.geojson` | Start, passages, forbidden zones, study area. All EPSG:32635. |
-| `data/challenge/03_docs/*.pdf` | Challenge description, annotation rules, Marcaj quick start. |
-| `data/challenge/04_source/*.tif` | Source orthomosaic, EPSG:4326 (gitignored, 628 MB). |
+| `data/challenge/03_docs/*.pdf` | Challenge description, annotation rules, Marcaj quick start, Sireț3 dataset brief. |
+| `data/challenge/04_source/*.tif` | Source orthomosaic, EPSG:4326 (gitignored, 658.6 MB on the official brief). |
 | `data/challenge/05_examples/` | Two scored-format example tiles plus previews. Not scored. |
 | `data/tiles/siret3_rXXX_cYYY.tif` | Unzipped tiles for `siret3 inventory` (gitignored). |
 | `data/tile_index.csv` | Written by `siret3 inventory`. |

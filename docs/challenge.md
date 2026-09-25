@@ -1,6 +1,6 @@
 # Vineyard AI Field Challenge — official brief
 
-Source of truth for **what this repo must ship**. Transcribed from `data/challenge/03_docs/Vineyard_AI_Field_Challenge_description.pdf` (Deeptech GigaHack 2026, Marcaj, 25–27 September 2026), plus the **26 Sep clarification: two walking routes** (government inspector and farmer). The packed PDF may still describe one walk until organizers replace it. Scoring lives in [`scoring.md`](scoring.md). How to draw labels lives in [`annotation-rules.md`](annotation-rules.md). What is still missing in this repo lives in [`must-implement.md`](must-implement.md).
+Source of truth for **what this repo must ship**. Transcribed from `data/challenge/03_docs/Vineyard_AI_Field_Challenge_description.pdf` (Deeptech GigaHack 2026, Marcaj, 25–27 September 2026), plus the **26 Sep clarification: two walking routes** (government inspector and farmer). The packed PDF may still describe one walk until organizers replace it. Scoring lives in [`scoring.md`](scoring.md). How to draw labels lives in [`annotation-rules.md`](annotation-rules.md). Imagery card: [`siret3-dataset.md`](siret3-dataset.md). What is still missing in this repo lives in [`must-implement.md`](must-implement.md).
 
 **Deadline:** 15:00 Sunday 27 September 2026, Europe/Chisinau. Repository link **and** Marcaj project. Marcaj is frozen at the deadline; organizers export annotations.
 
@@ -73,7 +73,7 @@ Full drawing rules: [`annotation-rules.md`](annotation-rules.md) and `data/chall
 
 ## Data
 
-Primary: Sireț3 / Siret3, OpenAerialMap, 3DATA COLLECT. Unannotated RGB GeoTIFF orthomosaic, 20 May 2025, UAV, 3.52 cm/px, ~145 ha. Challenge tiles are that mosaic reprojected to EPSG:32635 and cut. CC BY 4.0.
+Primary: Sireț3 / Siret3, OpenAerialMap, 3DATA COLLECT. Unannotated RGB GeoTIFF orthomosaic, 20 May 2025 (UTC), UAV **Mavic 3E**, reported GSD **3.52 cm/px** (resolution, not accuracy; no RMSE published). Imaged area **~1.45 km² / 145 ha** from the OAM alpha mask — the 3.32 km² bounding rectangle includes empty margins. Source file 658.6 MB, 70,246 × 81,986 px, EPSG:4326. Survey centre 47.122392 N, 28.712051 E (not the route start). Challenge tiles are that mosaic reprojected to EPSG:32635 and cut. CC BY 4.0. Full card: [`siret3-dataset.md`](siret3-dataset.md) / `data/challenge/03_docs/Marcaj_Siret3_Dataset_Brief_EN.pdf`.
 
 Suggested open training data (verify licences):
 
@@ -93,6 +93,7 @@ Adapt for scale, season, and appearance.
 | Annotation rules | PDF | `data/challenge/03_docs/Vineyard_AI_annotation_rules.pdf` |
 | Example tiles (not scored) + upload template | CVAT 1.1 | `data/challenge/05_examples/` |
 | Marcaj quick start | PDF | `data/challenge/03_docs/Marcaj_quick_start_for_teams.pdf` |
+| Sireț3 dataset brief | PDF | `data/challenge/03_docs/Marcaj_Siret3_Dataset_Brief_EN.pdf` |
 | Full source orthomosaic | GeoTIFF, EPSG:4326 | `data/challenge/04_source/` |
 
 Official start: X 629504.70, Y 5220250.75 (47.1230335 N, 28.7073776 E), tile `siret3_r018_c010.tif`.

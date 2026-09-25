@@ -83,7 +83,7 @@ The verbal session used “Markaz” / “Syret” / “trees.” The scored pro
 | API-served models allowed | Yes if listed in the README | Default stays **local** weights (reproducible, cheaper) |
 | Nail the core use case | Coach advice | No live drone, no robots, no real-time updates |
 | Six sub-solutions | 25 + 10 + 15 + 10 + 25 + 15 = 100 | See [`scoring.md`](scoring.md) |
-| ~3 cm/px | Challenge tiles are **2.5 cm/px** (0.025 m); source ortho ~3.52 cm/px | Inventory reads the GeoTIFF; do not assume 3 cm |
+| ~3 cm/px | Challenge tiles are **2.5 cm/px** (0.025 m); source ortho **3.52 cm/px** reported GSD (resolution, not accuracy; no RMSE) | Inventory reads the GeoTIFF; do not assume 3 cm |
 | “Per-tree IDs” | `vineyard_id` on every object; `row_id` on rows. Canopy count is instance F1, not a tree-ID attribute | Do not invent `tree_id` in Marcaj |
 | Platform export is the submission | Annotations are **exported by organizers** from Marcaj at 15:00. Repo must contain `route.geojson`, `route_farmer.geojson`, `measurements.csv`, README, code | We still export for measurements and the map |
 | One walking route | **26 Sep: two walks** (inspector + farmer) | Inspector = scored 25%. Farmer = required second file + red web layer |

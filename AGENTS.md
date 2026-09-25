@@ -14,6 +14,7 @@ GigaHack 2026, Marcaj Vineyard AI Field Challenge, Sireț3. Deadline Sunday 27 S
 | [`docs/must-implement.md`](docs/must-implement.md) | Brief → this repo: gaps, pipeline, checklists |
 | [`docs/vineyard-plan.md`](docs/vineyard-plan.md) | Weekend runbook |
 | [`docs/vineyard-research.md`](docs/vineyard-research.md) | Open datasets and tools |
+| [`docs/siret3-dataset.md`](docs/siret3-dataset.md) | Official Sireț3 imagery card (area, GSD, sensor, licence) |
 | [`data/challenge/README.md`](data/challenge/README.md) | Pack file index |
 
 Human README: [`README.md`](README.md).
@@ -34,7 +35,8 @@ The Google Drive download is copied to `data/challenge/` (about 1 GB). Tile ZIPs
 | `data/challenge/03_docs/Vineyard_AI_Field_Challenge_description.pdf` | Tasks, submission, rules, judging. |
 | `data/challenge/03_docs/Vineyard_AI_annotation_rules.pdf` | Labels, attributes, and worked cases. Read this before changing the CVAT writer. |
 | `data/challenge/03_docs/Marcaj_quick_start_for_teams.pdf` | Sign in, build and upload ZIPs, publish, correct, submit. |
-| `data/challenge/04_source/siret3_source_orthomosaic_EPSG4326.tif` | Full original orthomosaic, 628 MB, EPSG:4326, as published on OpenAerialMap. Whole-survey training only. Gitignored. |
+| `data/challenge/03_docs/Marcaj_Siret3_Dataset_Brief_EN.pdf` | Organising-committee imagery card: 145 ha, 3.52 cm/px, Mavic 3E, 658.6 MB source. Transcribed in [`docs/siret3-dataset.md`](docs/siret3-dataset.md). |
+| `data/challenge/04_source/siret3_source_orthomosaic_EPSG4326.tif` | Full original orthomosaic, **658.6 MB** (brief), EPSG:4326, as published on OpenAerialMap. Whole-survey training only. Gitignored. |
 | `data/challenge/05_examples/siret3_examples_cvat.zip` | Two example tiles in CVAT for images 1.1 (`annotations.xml` + `images/`). Same format as the upload. Not scored. |
 | `data/challenge/05_examples/preview_siret3_r021_c012.jpg` | Block `V01`: 25 rows, all `regular`, 399 canopies, 24 inter-rows, all `bare_soil`. Young vines on tilled soil, one polygon per plant. |
 | `data/challenge/05_examples/preview_siret3_r006_c004.jpg` | Block `V02`: 26 rows, 5 `disrupted`, 251 canopies, 25 inter-rows (21 `bare_soil`, 4 `mixed`). Grass strips. White vine tubes and stakes are not waste. |
