@@ -1,6 +1,6 @@
 # What this repo must implement
 
-Maps the official brief ([`challenge.md`](challenge.md)) and score card ([`scoring.md`](scoring.md)) onto **this** codebase. Use this file when you pick the next coding task. Do not invent extra products.
+Maps the official brief ([`challenge.md`](challenge.md)) and score card ([`scoring.md`](scoring.md)) onto **this** codebase. Use this file when you pick the next coding task. Do not invent extra products. What to train: [`sota-research.md`](sota-research.md). Verbal briefing vs PDF: [`provider-briefing.md`](provider-briefing.md).
 
 **Deadline:** Sunday 27 Sep 2026, 15:00 Europe/Chisinau.
 
@@ -12,8 +12,8 @@ Maps the official brief ([`challenge.md`](challenge.md)) and score card ([`scori
 
 | Official must-have | Score | Repo surface today | Still to build |
 | --- | --- | --- | --- |
-| Per-plant `vineyard` polygons | 25% canopy | YOLO-seg stub `models/train_yolo.py`, `models/infer_yolo.py` | Train on Riseholme, infer 311 tiles, split touching canopies, no labels on empty tiles |
-| `waste` boxes | 10% | YOLO-det stub + `models/configs/waste.yaml` | Train on DroneWaste, conservative threshold, drop tubes/stakes |
+| Per-plant `vineyard` polygons | 25% canopy | YOLO-seg stub `models/train_yolo.py`, `models/infer_yolo.py` | Train YOLO11m-seg on Riseholme (optional YOLO26-seg / RF-DETR-Seg A/B). Infer 311 tiles, split touching canopies, no labels on empty tiles. See [`sota-research.md`](sota-research.md). |
+| `waste` boxes | 10% | YOLO-det stub + `models/configs/waste.yaml` | Train YOLO12/26 detect on DroneWaste, one class, high precision, drop tubes/stakes |
 | `row` polylines + `row_id` | 8% of 15% axes | `processing/src/siret3/ids.py` stitch stub | Derive axes from canopies / GRowSeg / LCAS helpers; one line per row per tile through gaps |
 | `row_structure` | part of 5% attributes | Wrong enums in `cvat11.py` | Gap ≥ 5 m → `disrupted`; else `regular` / `unassessable` |
 | `interrow_area` polygons | used by route + 2% area | Not derived | Canopy-edge corridors, no overlap with canopies, clip to row ends |

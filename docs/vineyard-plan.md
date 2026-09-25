@@ -2,11 +2,11 @@
 
 Turn the Moldova Sireț3 orthomosaic into canopy / waste / row / inter-row annotations, planar measurements, a closed inspection walk, and a web map. **Marcaj is the scored annotation source.** Deadline: Sunday 27 Sep 2026, 15:00 Chișinău.
 
-Official brief, scores, and remaining work: [challenge.md](./challenge.md), [scoring.md](./scoring.md), [annotation-rules.md](./annotation-rules.md), [must-implement.md](./must-implement.md). Research catalog: [vineyard-research.md](./vineyard-research.md). This file is the weekend runbook.
+Official brief, scores, and remaining work: [challenge.md](./challenge.md), [scoring.md](./scoring.md), [annotation-rules.md](./annotation-rules.md), [must-implement.md](./must-implement.md). Provider briefing vs PDF: [provider-briefing.md](./provider-briefing.md). SOTA lock: [sota-research.md](./sota-research.md). Research catalog: [vineyard-research.md](./vineyard-research.md). This file is the weekend runbook.
 
 ## Bet
 
-Fine-tune open vineyard instance models (Riseholme COCO → Ultralytics YOLO11-seg) and a waste box head (DroneWaste) on the H100. Derive rows, inter-rows, gaps, IDs, and the route with GIS. Steal GIS ideas from [LCAS/uav-vineyard-mapping](https://github.com/LCAS/uav-vineyard-mapping) (`poles_to_rows.py`, `mid_row_lines.py`) and a zero-shot row prior from GRowSeg. Import **once** into Marcaj with all 311 unchanged GeoTIFFs, then correct by hand. Do not write a new foundation model. Do not label Sireț3 anywhere except Marcaj.
+Fine-tune Riseholme COCO on Ultralytics **YOLO11m-seg** (optional A/B: YOLO26-seg or RF-DETR-Seg if the H100 is free) and a single-class waste detector (**YOLO12 or YOLO26**) on DroneWaste. Zero-shot **GRowSeg** as a row prior. **SAM2 box** polish on hard canopies only. Derive rows, inter-rows, 5 m gaps, IDs, ExG cover, and the route with GIS ([LCAS/uav-vineyard-mapping](https://github.com/LCAS/uav-vineyard-mapping) `poles_to_rows.py`, `mid_row_lines.py`). Import **once** into Marcaj with all 311 unchanged GeoTIFFs, then correct by hand. Do not write a new foundation model. Do not label Sireț3 anywhere except Marcaj. Do not train RowDetr, SAM3-as-detector, or ground bunch models. Full lock table: [sota-research.md](./sota-research.md).
 
 ## Locked constraints
 

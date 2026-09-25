@@ -9,6 +9,8 @@ GigaHack 2026, Marcaj Vineyard AI Field Challenge, Sireț3. Deadline Sunday 27 S
 | [`docs/challenge.md`](docs/challenge.md) | Official brief: problem, must-haves, Marcaj, submission, rules |
 | [`docs/scoring.md`](docs/scoring.md) | 100% score card and how each slice is computed |
 | [`docs/annotation-rules.md`](docs/annotation-rules.md) | How to draw every label and attribute |
+| [`docs/provider-briefing.md`](docs/provider-briefing.md) | Verbal briefing vs official PDF (PDF wins) |
+| [`docs/sota-research.md`](docs/sota-research.md) | Last 3–6 month papers and the locked weekend stack |
 | [`docs/must-implement.md`](docs/must-implement.md) | Brief → this repo: gaps, pipeline, checklists |
 | [`docs/vineyard-plan.md`](docs/vineyard-plan.md) | Weekend runbook |
 | [`docs/vineyard-research.md`](docs/vineyard-research.md) | Open datasets and tools |

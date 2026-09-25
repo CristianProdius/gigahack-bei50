@@ -24,6 +24,9 @@ models/weights/
 data/challenge/01_tiles/*.zip
 data/challenge/04_source/*.tif
 data/challenge/04_source/*.tiff
+# Training dumps and third-party clones
+datasets/
+vendor/
 *.pt
 *.pth
 *.onnx
