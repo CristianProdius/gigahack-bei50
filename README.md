@@ -4,8 +4,15 @@ GigaHack Sireț3 vineyard / Marcaj: research, one-shot CVAT 1.1 import, planar m
 
 Deadline: Sunday 27 Sep 2026, 15:00 Chișinău. Marcaj is the scored annotation source.
 
-- Research: [`docs/vineyard-research.md`](docs/vineyard-research.md) (full open-repo catalog: Riseholme / LCAS mapping, GRowSeg, OrthoSeg, ICAERUS, DroneWaste, UOPNOA, YOLO/SAM, GIS, CVAT, routing, MapLibre)
+Challenge context (do not lose):
+
+- Official brief + must-haves: [`docs/challenge.md`](docs/challenge.md)
+- Score card (25 / 10 / 15 / 10 / 25 / 15): [`docs/scoring.md`](docs/scoring.md)
+- How to draw labels: [`docs/annotation-rules.md`](docs/annotation-rules.md)
+- What this repo still has to build: [`docs/must-implement.md`](docs/must-implement.md)
 - Weekend runbook: [`docs/vineyard-plan.md`](docs/vineyard-plan.md)
+- Research catalog: [`docs/vineyard-research.md`](docs/vineyard-research.md)
+- Agent file index: [`AGENTS.md`](AGENTS.md)
 
 ## What this repo is
 
@@ -13,13 +20,37 @@ A usable scaffold plus the evidence pack. It does **not** invent Sireț3 labels.
 
 ```
 docs/                 research + plan
+data/challenge/       official Marcaj pack (tiles, route, rules, examples, source ortho)
 processing/           rasterio / geopandas / shapely / NetworkX pipeline
 models/               YOLO11 + SAM/SAM2/MobileSAM stubs
 web/                  Next.js + MapLibre (port 43173)
-data/tiles/           drop 311 siret3_rXXX_cYYY.tif here
+data/tiles/           unzip the 311 siret3_rXXX_cYYY.tif here before inventory
 route.geojson         closed walk (sample until Marcaj export)
 measurements.csv      planar m / m² (sample until Marcaj export)
 ```
+
+Agent notes: [`AGENTS.md`](AGENTS.md). Pack index: [`data/challenge/README.md`](data/challenge/README.md).
+
+## Official data pack
+
+Copied from the Marcaj Drive download into [`data/challenge/`](data/challenge/). Tile ZIPs and the source orthomosaic stay local (gitignored, about 1 GB). GeoJSON, PDFs, previews, and the example CVAT zip are in the tree.
+
+| Path | What |
+| --- | --- |
+| `data/challenge/01_tiles/siret3_challenge_tiles_part1of5.zip` … `part5of5.zip` | 311 GeoTIFF tiles, EPSG:32635, 0.025 m/px, 2048×2048 px (51.2 m). Parts are ≤ 90 MB. |
+| `data/challenge/01_tiles/overview.png` | 1 m/px overview. Tiles in yellow, route START in red. |
+| `data/challenge/02_route/start.geojson` | Start and finish. Point in EPSG:32635: X 629504.70, Y 5220250.75 (47.1230335 N, 28.7073776 E), tile `siret3_r018_c010.tif`. |
+| `data/challenge/02_route/passages.geojson` | Authorised passages. MultiPolygon, `type` = `passage`. |
+| `data/challenge/02_route/forbidden.geojson` | Forbidden zones. MultiPolygon, `type` = `forbidden`. |
+| `data/challenge/02_route/study_area.geojson` | Outline of the 311 tiles. |
+| `data/challenge/02_route/preview_passages_forbidden.png` | Preview of passages and forbidden zones. |
+| `data/challenge/03_docs/` | Challenge description, annotation rules, Marcaj quick start (PDF). |
+| `data/challenge/04_source/siret3_source_orthomosaic_EPSG4326.tif` | Full source orthomosaic, EPSG:4326, as on OpenAerialMap. For whole-survey training only. |
+| `data/challenge/05_examples/siret3_examples_cvat.zip` | Two annotated tiles in CVAT for images 1.1. Not scored. |
+| `data/challenge/05_examples/preview_siret3_r021_c012.jpg` | Young vines, block `V01`: 25 regular rows, 399 canopies, 24 bare-soil inter-rows. |
+| `data/challenge/05_examples/preview_siret3_r006_c004.jpg` | Sparse rows, block `V02`: 26 rows (5 disrupted), 251 canopies, mixed inter-rows. |
+
+Unzip tiles into `data/tiles/` before `siret3 inventory`. Upload pre-annotations as CVAT 1.1 ZIPs of at most 90 MB (one ZIP per part works). All five parts, 311 files, then publish. Pre-annotations cannot be imported after publishing.
 
 ## Install
 
@@ -70,7 +101,7 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
    python models/infer_yolo.py --weights models/weights/vineyard.pt --tiles data/tiles --out data/predictions
    ```
 
-3. **Stitch IDs and write `team_upload.zip`** (311 original GeoTIFF names, import **once**).
+3. **Stitch IDs and write CVAT 1.1 ZIPs** (311 original GeoTIFF names, ≤ 90 MB each, import **once** before publish).
 
    ```bash
    siret3 inventory data/tiles --out data/tile_index.csv
@@ -84,7 +115,7 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
 
    ```bash
    siret3 measurements data/stitched.geojson --out measurements.csv
-   siret3 route data/stitched.geojson --start 28.71080,47.12140 --out route.geojson
+   siret3 route data/stitched.geojson --start 28.7073776,47.1230335 --out route.geojson
    ```
 
    Start must snap within 5 m. Walk uses inter-row + authorised passages only.
@@ -119,4 +150,4 @@ AGRIDS YOLO zip and the Kaggle Riseholme mirror are **NC / ND**. Do not use them
 
 ## Status
 
-Scaffold + research. Weights, the 311 tiles, and the scored Marcaj dump are not in git.
+Official pack is on disk under `data/challenge/`. Tile ZIPs, the source orthomosaic, weights, and the scored Marcaj dump are not in git. Sample `route.geojson` and `measurements.csv` are still synthetic until the Marcaj export.

@@ -2,7 +2,7 @@
 
 Turn the Moldova Sireț3 orthomosaic into canopy / waste / row / inter-row annotations, planar measurements, a closed inspection walk, and a web map. **Marcaj is the scored annotation source.** Deadline: Sunday 27 Sep 2026, 15:00 Chișinău.
 
-Evidence and the full open-source catalog live in [vineyard-research.md](./vineyard-research.md). This file is the runbook.
+Official brief, scores, and remaining work: [challenge.md](./challenge.md), [scoring.md](./scoring.md), [annotation-rules.md](./annotation-rules.md), [must-implement.md](./must-implement.md). Research catalog: [vineyard-research.md](./vineyard-research.md). This file is the weekend runbook.
 
 ## Bet
 
@@ -14,10 +14,11 @@ Fine-tune open vineyard instance models (Riseholme COCO → Ultralytics YOLO11-s
 | --- | --- |
 | Deadline | Sunday 27 Sep 2026, 15:00 Europe/Chisinau |
 | Scored labels | vineyard polygon, waste bbox, row polyline, interrow_area polygon |
-| Attributes | `vineyard_id`, `row_id`, `row_structure`, `interrow_cover` (and vineyard_id on rows / inter-rows) |
-| Import | One `team_upload.zip`. 311 original `.tif` names. Then publish. |
+| Attributes | `vineyard_id`, `row_id`, `row_structure` (`regular` / `disrupted` / `unassessable`), `interrow_cover` (`bare_soil` / `vegetation` / `mixed` / `unassessable`) |
+| Import | CVAT 1.1 ZIPs, ≤ 90 MB each, 311 original `.tif` names. Upload all five parts, then publish. |
 | CRS | Measurements horizontal in **EPSG:32635**. No DEM / slope correction. |
-| Route | Closed walk, start = end, start snap ≤ 5 m, inter-row + authorised passages only, forbidden zones out |
+| Route | Closed walk, start = end, start snap ≤ 5 m, inter-row + authorised passages only, forbidden zones out. Official start: 28.7073776, 47.1230335 (EPSG:32635 X 629504.70, Y 5220250.75), tile `siret3_r018_c010.tif`. |
+| Pack | `data/challenge/` — see [`AGENTS.md`](../AGENTS.md) |
 | Sireț3 drawing | Marcaj only. Training on other public data is OK. No other team's labels. |
 | APIs | Paid APIs allowed if listed in README. Prefer open weights. |
 
@@ -58,9 +59,9 @@ Do **not** train on Sireț3 pixels that we drew ourselves outside Marcaj. Public
 1. Inventory 311 files: `siret3 inventory data/tiles` → `data/tile_index.csv`. Fail if any name is not `siret3_rXXX_cYYY.tif` or if count ≠ 311.
 2. Dry-run export on 3 tiles. Open the XML. Confirm `name=` matches the TIFF file names. Import that mini-zip into a throwaway Marcaj task.
 3. Infer all 311. Project to EPSG:32635. Stitch IDs (research §7).
-4. Derive inter-row polygons: vineyard outline minus dilated canopies minus a thin row buffer, split by row centreline Voronoi. Set `interrow_cover` to `unknown` unless a simple NDVI/colour rule is confident (`grass` / `soil` / `cover_crop`).
-5. Build `team_upload.zip` with **all 311** TIFFs (byte copies) + `annotations.xml`.
-6. Import once. Check 311 images present. **Publish.**
+4. Derive inter-row polygons: vineyard outline minus dilated canopies minus a thin row buffer, split by row centreline Voronoi. Set `interrow_cover` only to `bare_soil`, `vegetation`, `mixed`, or `unassessable` (see `data/challenge/05_examples/`).
+5. Build CVAT 1.1 ZIPs with **all 311** TIFFs (byte copies) + `annotations.xml`, at most 90 MB each. One ZIP per official tile part is enough.
+6. Import once. Check 311 images present. **Publish.** Pre-annotations cannot be imported after publishing.
 7. Team-only correction in Marcaj. Agree IDs before anyone splits a vineyard.
 
 If the dry-run import rejects `images/` prefixes or GeoTIFF, fix the writer and repeat the dry-run. Do not publish a 310-file zip.
@@ -136,7 +137,7 @@ Sample data in the repo is **synthetic near the Sireț3 bbox**, labelled SAMPLE.
 | When | Done means |
 | --- | --- |
 | Fri EOD | Weights training or GRowSeg dry-run visible; 3-tile XML validates |
-| Sat 18:00 | 311-file zip imported and published |
+| Sat 18:00 | All five parts imported (311 files) and published |
 | Sun 12:00 | `measurements.csv` + `route.geojson` + map screenshot |
 | Sun 15:00 | Freeze |
 

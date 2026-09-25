@@ -2,7 +2,7 @@
 
 Verified sources for the GigaHack vineyard / Marcaj track. Deadline Sunday 27 Sep 2026, 15:00 Chișinău. Marcaj annotations are the scored source. Training on other public data is allowed. Manual Sireț3 labelling stays inside Marcaj. Measurements are planar in EPSG:32635 with no terrain correction.
 
-This file is the evidence pack. The weekend sequence lives in [vineyard-plan.md](./vineyard-plan.md).
+This file is the evidence pack. The weekend sequence lives in [vineyard-plan.md](./vineyard-plan.md). The official Marcaj download is in [`data/challenge/`](../data/challenge/) (tiles, route GeoJSON, PDFs, examples, source orthomosaic). What each file is: [`AGENTS.md`](../AGENTS.md) and [`data/challenge/README.md`](../data/challenge/README.md).
 
 ## 1. Sireț3 on OpenAerialMap
 

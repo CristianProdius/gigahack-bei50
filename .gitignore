@@ -20,6 +20,10 @@ npm-debug.log*
 data/tiles/*.tif
 data/tiles/*.tiff
 models/weights/
+# Official pack rasters stay on disk (~1 GB). Docs, GeoJSON, PDFs, and previews stay tracked.
+data/challenge/01_tiles/*.zip
+data/challenge/04_source/*.tif
+data/challenge/04_source/*.tiff
 *.pt
 *.pth
 *.onnx

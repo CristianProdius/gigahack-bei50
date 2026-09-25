@@ -27,7 +27,7 @@ siret3 cvat-export ../data/stitched.gpkg ../data/tiles --out ../team_upload.zip
 siret3 measurements ../export.xml --tiles ../data/tiles --out ../measurements.csv
 
 # Closed walk on inter-row + passages, start snap 5 m
-siret3 route ../data/stitched.gpkg --start 28.7120,47.1224 --out ../route.geojson
+siret3 route ../data/stitched.gpkg --start 28.7073776,47.1230335 --out ../route.geojson
 ```
 
-`route` accepts `--start` in lon,lat (4326) or x,y if you pass `--start-crs EPSG:32635`.
+Official start is in `data/challenge/02_route/start.geojson`. Passages and forbidden zones are the GeoJSON files next to it. `route` accepts `--start` in lon,lat (4326) or x,y if you pass `--start-crs EPSG:32635` (X 629504.70, Y 5220250.75). Upload ZIPs must stay ≤ 90 MB.
