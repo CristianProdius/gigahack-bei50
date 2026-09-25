@@ -22,23 +22,33 @@ def _cmd_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
-def _rings_from_geometry(geom: dict) -> list[list[tuple[float, float]]]:
+def _rings_from_geometry(geom: dict) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """Return (exterior, holes) for each polygon, or a single ring with no holes."""
+    from shapely.geometry import shape
+
     gtype = geom.get("type")
+    if gtype in {"Polygon", "MultiPolygon"}:
+        g = shape(geom)
+        polys = list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
+        out = []
+        for poly in polys:
+            if poly.is_empty:
+                continue
+            exterior = [(float(x), float(y)) for x, y in poly.exterior.coords]
+            holes = [[(float(x), float(y)) for x, y in ring.coords] for ring in poly.interiors]
+            out.append((exterior, holes))
+        return out
     coords = geom.get("coordinates") or []
-    if gtype == "Polygon":
-        return [[(float(x), float(y)) for x, y in coords[0]]]
-    if gtype == "MultiPolygon":
-        return [[(float(x), float(y)) for x, y in poly[0]] for poly in coords]
     if gtype == "LineString":
-        return [[(float(x), float(y)) for x, y in coords]]
+        return [([(float(x), float(y)) for x, y in coords], [])]
     if gtype == "MultiLineString":
-        return [[(float(x), float(y)) for x, y in line] for line in coords]
+        return [([(float(x), float(y)) for x, y in line], []) for line in coords]
     if gtype == "Point":
-        return [[(float(coords[0]), float(coords[1]))]]
+        return [([(float(coords[0]), float(coords[1]))], [])]
     if coords and isinstance(coords[0], (int, float)):
-        return [[(float(coords[0]), float(coords[1]))]]
+        return [([(float(coords[0]), float(coords[1]))], [])]
     if coords and isinstance(coords[0][0], (int, float)):
-        return [[(float(a), float(b)) for a, b in coords]]
+        return [([(float(a), float(b)) for a, b in coords], [])]
     return []
 
 
@@ -49,9 +59,13 @@ def _load_projected(path: Path) -> list[ProjectedPoly]:
         props = feat.get("properties", feat)
         geom = feat.get("geometry", {})
         kind = props.get("kind") or props.get("type") or props.get("label") or "vineyard"
-        for ring in _rings_from_geometry(geom) or [props.get("coords") or []]:
+        parsed = _rings_from_geometry(geom)
+        if not parsed and props.get("coords"):
+            parsed = [(props["coords"], [])]
+        for ring, holes in parsed:
             if not ring:
                 continue
+            extras = {"holes": holes} if holes else None
             items.append(
                 ProjectedPoly(
                     kind=kind,
@@ -61,6 +75,7 @@ def _load_projected(path: Path) -> list[ProjectedPoly]:
                     row_id=props.get("row_id"),
                     row_structure=props.get("row_structure"),
                     interrow_cover=props.get("interrow_cover"),
+                    extras=extras,
                 )
             )
     return items
@@ -69,7 +84,9 @@ def _load_projected(path: Path) -> list[ProjectedPoly]:
 def _dump_geojson(items: list[ProjectedPoly], out: Path) -> None:
     features = []
     for p in items:
-        if p.kind == "row":
+        if p.kind == "inspection" or (p.kind != "row" and len(p.coords) == 1):
+            geom = {"type": "Point", "coordinates": list(p.coords[0])}
+        elif p.kind == "row":
             geom = {"type": "LineString", "coordinates": p.coords}
         elif p.kind == "waste" and len(p.coords) >= 2:
             geom = {"type": "LineString", "coordinates": p.coords}
@@ -88,6 +105,7 @@ def _dump_geojson(items: list[ProjectedPoly], out: Path) -> None:
                     "row_structure": p.row_structure,
                     "interrow_cover": p.interrow_cover,
                     "tile": p.tile,
+                    "id": (p.extras or {}).get("id"),
                     "extras": p.extras,
                 },
                 "geometry": geom,
@@ -157,21 +175,49 @@ def _cmd_measurements(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_inspect(args: argparse.Namespace) -> int:
+    from .inspect import inspections_from_canopies
+
+    items = _load_projected(Path(args.geojson))
+    found = inspections_from_canopies(items)
+    _dump_geojson(found, Path(args.out))
+    print(f"wrote {len(found)} inspections -> {args.out}")
+    return 0
+
+
 def _cmd_route(args: argparse.Namespace) -> int:
     from .crs import to_work_xy
+    from .ids import centroid
+    from .inspect import inspections_from_canopies, waste_targets
+    from .route import load_official_start, passable_from_items
 
-    lon_s, lat_s = [float(x) for x in args.start.split(",")]
-    if args.start_crs.upper() in {"EPSG:4326", "4326"}:
-        start = to_work_xy(lon_s, lat_s)
+    if args.start:
+        lon_s, lat_s = [float(x) for x in args.start.split(",")]
+        if args.start_crs.upper() in {"EPSG:4326", "4326"}:
+            start = to_work_xy(lon_s, lat_s)
+        else:
+            start = (lon_s, lat_s)
     else:
-        start = (lon_s, lat_s)
+        start = load_official_start(Path(args.start_file) if args.start_file else None)
+
     items = _load_projected(Path(args.geojson))
+    if args.passages:
+        items.extend(_load_projected(Path(args.passages)))
+    if args.forbidden:
+        items.extend(_load_projected(Path(args.forbidden)))
     inter = [p.coords for p in items if p.kind == "interrow_area"]
     passages = [p.coords for p in items if p.kind == "passage"]
     forbidden = [p.coords for p in items if p.kind == "forbidden"]
-    waypoints = [__import__("siret3.ids", fromlist=["centroid"]).centroid(p.coords) for p in items if p.kind in {"vineyard", "waste", "interrow_area"}]
+    ins = inspections_from_canopies(items)
+    waypoints = [centroid(p.coords) for p in ins] + waste_targets(items)
     if not waypoints:
-        raise SystemExit("No waypoints in GeoJSON (need vineyard / waste / interrow_area)")
+        waypoints = [
+            centroid(p.coords)
+            for p in items
+            if p.kind in {"waste", "interrow_area", "inspection"}
+        ]
+    if not waypoints:
+        raise SystemExit("No route targets (need inspections, waste, or interrow_area)")
     tour = closed_walk(
         waypoints,
         start,
@@ -179,6 +225,8 @@ def _cmd_route(args: argparse.Namespace) -> int:
         passages=passages,
         forbidden=forbidden,
         tolerance_m=args.tolerance,
+        require_legal=True,
+        passable=passable_from_items(items),
     )
     write_route_geojson(tour, Path(args.out), start=start)
     print(f"closed walk {len(tour)} vertices -> {args.out}")
@@ -218,10 +266,18 @@ def main(argv: list[str] | None = None) -> int:
     ms.add_argument("--out", default="measurements.csv")
     ms.set_defaults(func=_cmd_measurements)
 
-    rt = sub.add_parser("route", help="Closed walk, 5 m start snap")
+    ins = sub.add_parser("inspect", help="Gap / missing-planting targets (not Marcaj)")
+    ins.add_argument("geojson")
+    ins.add_argument("--out", default="inspections.geojson")
+    ins.set_defaults(func=_cmd_inspect)
+
+    rt = sub.add_parser("route", help="Closed walk in EPSG:32635, 5 m start snap")
     rt.add_argument("geojson")
-    rt.add_argument("--start", required=True, help="lon,lat or x,y")
+    rt.add_argument("--start", default=None, help="lon,lat or x,y; default official start")
+    rt.add_argument("--start-file", default=None, help="GeoJSON Point in EPSG:32635")
     rt.add_argument("--start-crs", default="EPSG:4326")
+    rt.add_argument("--passages", default=None)
+    rt.add_argument("--forbidden", default=None)
     rt.add_argument("--tolerance", type=float, default=START_TOLERANCE_M)
     rt.add_argument("--out", default="route.geojson")
     rt.set_defaults(func=_cmd_route)

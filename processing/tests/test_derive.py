@@ -45,6 +45,7 @@ def test_load_official_passages_multipolygon():
     assert len(items) >= 1
     assert all(p.kind == "passage" for p in items)
     assert all(len(p.coords) >= 4 for p in items)
+    assert any((p.extras or {}).get("holes") for p in items)
 
 
 def test_interrows_pair_adjacent_diagonal_rows():

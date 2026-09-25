@@ -1,0 +1,45 @@
+from siret3.ids import ProjectedPoly
+from siret3.inspect import inspections_from_canopies
+
+
+def _plant(x: float, y: float, vid: str = "V01") -> ProjectedPoly:
+    return ProjectedPoly(
+        kind="vineyard",
+        vineyard_id=vid,
+        coords=[(x - 0.1, y - 0.1), (x + 0.1, y - 0.1), (x + 0.1, y + 0.1), (x - 0.1, y + 0.1)],
+        tile="siret3_r001_c001.tif",
+    )
+
+
+def test_gap_over_five_metres_emits_one_inspection():
+    plants = [_plant(0.0, 0.0), _plant(1.2, 0.0), _plant(7.4, 0.0), _plant(8.6, 0.0)]
+    row = ProjectedPoly(
+        kind="row",
+        vineyard_id="V01",
+        row_id="V01-R01",
+        row_structure="disrupted",
+        coords=[(0.0, 0.0), (8.6, 0.0)],
+        tile="siret3_r001_c001.tif",
+    )
+    out = inspections_from_canopies(plants + [row])
+    assert len(out) == 1
+    ins = out[0]
+    assert ins.kind == "inspection"
+    assert ins.vineyard_id == "V01"
+    assert ins.row_id == "V01-R01"
+    assert ins.extras and ins.extras.get("id", "").startswith("INS-")
+    cx = sum(c[0] for c in ins.coords) / len(ins.coords)
+    assert 3.5 < cx < 5.0
+
+
+def test_regular_row_emits_no_inspection():
+    plants = [_plant(i * 1.2, 0.0) for i in range(5)]
+    row = ProjectedPoly(
+        kind="row",
+        vineyard_id="V01",
+        row_id="V01-R01",
+        row_structure="regular",
+        coords=[(0.0, 0.0), (4.8, 0.0)],
+        tile="siret3_r001_c001.tif",
+    )
+    assert inspections_from_canopies(plants + [row]) == []
