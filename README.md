@@ -35,6 +35,8 @@ measurements.csv      planar m / m² (sample until Marcaj export)
 
 Agent notes: [`AGENTS.md`](AGENTS.md). Pack index: [`data/challenge/README.md`](data/challenge/README.md).
 
+**Branch `frontend` is not this app.** It is a one-commit orphan with a white SVG canvas and DEMO DATA. Do not merge it into `main`. Work on `web/` here.
+
 ## Official data pack
 
 Copied from the Marcaj Drive download into [`data/challenge/`](data/challenge/). Tile ZIPs and the source orthomosaic stay local (gitignored, about 1 GB). GeoJSON, PDFs, previews, and the example CVAT zip are in the tree.

@@ -1,0 +1,23 @@
+name: block-orphan-frontend
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  refuse-orphan-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Do not merge the orphan frontend branch into main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$HEAD_REF" = "frontend" ]; then
+            echo "The 'frontend' branch is an unrelated-history orphan (SVG DEMO on :3000)."
+            echo "Merging it into main overwrites the scored repo."
+            echo "The admission UI is web/ on main (MapLibre, port 43173)."
+            echo "Copy look-and-feel onto web/. Do not open a PR from frontend → main."
+            exit 1
+          fi
+          echo "head_ref=$HEAD_REF (ok)"

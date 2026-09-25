@@ -117,7 +117,7 @@ kind,id,vineyard_id,area_m2,length_m,n_parts,tile_names
 
 ## Web UI
 
-Next.js + MapLibre in `web/`, preview port **43173**.
+Next.js + MapLibre in `web/`, preview port **43173**. Do **not** use or merge the orphan `frontend` branch (SVG DEMO on :3000).
 
 Layers: Sireț3 XYZ, vineyard fill, rows, inter-rows, waste boxes, route, start. Click a feature → ID + metres from `measurements.csv`.
 

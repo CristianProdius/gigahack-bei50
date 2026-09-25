@@ -149,3 +149,4 @@ Marcaj (human): upload the five ZIPs from `data/cvat_zips/`, confirm 311 files, 
 - Commit `data/challenge/01_tiles/*.zip`, `data/challenge/04_source/*.tif`, `data/tiles/*.tif`, or `models/weights/`.
 - Treat the root `route.geojson` start as official. The official start is `data/challenge/02_route/start.geojson`.
 - Start another H100 job while waste train holds the card.
+- Merge `origin/frontend` into `main`. That branch is an **unrelated-history orphan** (repo-root Next on :3000, SVG DEMO DATA). A merge overwrites `web/`, `processing/`, and the official pack. The scored UI is [`web/`](web/) on `main` (MapLibre, :43173). Copy IA onto `web/` only. A GitHub Action fails PRs from `frontend` → `main`.

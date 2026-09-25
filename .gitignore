@@ -55,3 +55,4 @@ vendor/
 agent-tools/
 tmp-web/
 tmp-scaffold/
+.worktrees/
