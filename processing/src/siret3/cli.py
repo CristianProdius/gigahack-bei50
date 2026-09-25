@@ -7,8 +7,9 @@ import json
 from pathlib import Path
 
 from . import EXPECTED_TILE_COUNT, START_TOLERANCE_M, WORK_CRS
-from .cvat11 import CvatImage, CvatShape, build_team_upload_zip, render_annotations
-from .ids import ProjectedPoly, assign_row_ids, stitch_vineyards
+from .cvat11 import CvatImage, build_part_zips, build_team_upload_zip, render_annotations
+from .derive import derive_from_canopies, images_from_projected
+from .ids import ProjectedPoly
 from .measurements import write_csv
 from .route import closed_walk, write_route_geojson
 from .tiles import inventory, write_index
@@ -21,84 +22,130 @@ def _cmd_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+def _rings_from_geometry(geom: dict) -> list[list[tuple[float, float]]]:
+    gtype = geom.get("type")
+    coords = geom.get("coordinates") or []
+    if gtype == "Polygon":
+        return [[(float(x), float(y)) for x, y in coords[0]]]
+    if gtype == "MultiPolygon":
+        return [[(float(x), float(y)) for x, y in poly[0]] for poly in coords]
+    if gtype == "LineString":
+        return [[(float(x), float(y)) for x, y in coords]]
+    if gtype == "MultiLineString":
+        return [[(float(x), float(y)) for x, y in line] for line in coords]
+    if gtype == "Point":
+        return [[(float(coords[0]), float(coords[1]))]]
+    if coords and isinstance(coords[0], (int, float)):
+        return [[(float(coords[0]), float(coords[1]))]]
+    if coords and isinstance(coords[0][0], (int, float)):
+        return [[(float(a), float(b)) for a, b in coords]]
+    return []
+
+
 def _load_projected(path: Path) -> list[ProjectedPoly]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     items = []
     for feat in data.get("features", data if isinstance(data, list) else []):
         props = feat.get("properties", feat)
         geom = feat.get("geometry", {})
-        coords = geom.get("coordinates") or props.get("coords") or []
-        if geom.get("type") == "Polygon":
-            flat = [(float(x), float(y)) for x, y in coords[0]]
-        elif geom.get("type") == "LineString":
-            flat = [(float(x), float(y)) for x, y in coords]
-        elif geom.get("type") == "Point":
-            flat = [(float(coords[0]), float(coords[1]))]
-        else:
-            flat = [(float(a), float(b)) for a, b in coords]
-        items.append(
-            ProjectedPoly(
-                kind=props.get("kind") or props.get("label") or "vineyard",
-                coords=flat,
-                tile=props.get("tile", ""),
-                vineyard_id=props.get("vineyard_id"),
-                row_id=props.get("row_id"),
+        kind = props.get("kind") or props.get("type") or props.get("label") or "vineyard"
+        for ring in _rings_from_geometry(geom) or [props.get("coords") or []]:
+            if not ring:
+                continue
+            items.append(
+                ProjectedPoly(
+                    kind=kind,
+                    coords=ring,
+                    tile=props.get("tile", ""),
+                    vineyard_id=props.get("vineyard_id"),
+                    row_id=props.get("row_id"),
+                    row_structure=props.get("row_structure"),
+                    interrow_cover=props.get("interrow_cover"),
+                )
             )
-        )
     return items
 
 
-def _cmd_stitch(args: argparse.Namespace) -> int:
-    items = _load_projected(Path(args.predictions))
-    items = stitch_vineyards(items)
-    items = assign_row_ids(items)
-    out = {
-        "type": "FeatureCollection",
-        "features": [
+def _dump_geojson(items: list[ProjectedPoly], out: Path) -> None:
+    features = []
+    for p in items:
+        if p.kind == "row":
+            geom = {"type": "LineString", "coordinates": p.coords}
+        elif p.kind == "waste" and len(p.coords) >= 2:
+            geom = {"type": "LineString", "coordinates": p.coords}
+        else:
+            ring = p.coords if p.coords and p.coords[0] == p.coords[-1] else list(p.coords) + (
+                [p.coords[0]] if p.coords else []
+            )
+            geom = {"type": "Polygon", "coordinates": [ring]}
+        features.append(
             {
                 "type": "Feature",
                 "properties": {
                     "kind": p.kind,
                     "vineyard_id": p.vineyard_id,
                     "row_id": p.row_id,
+                    "row_structure": p.row_structure,
+                    "interrow_cover": p.interrow_cover,
                     "tile": p.tile,
                     "extras": p.extras,
                 },
-                "geometry": {
-                    "type": "LineString" if p.kind == "row" else "Polygon",
-                    "coordinates": p.coords if p.kind == "row" else [p.coords],
-                },
+                "geometry": geom,
             }
-            for p in items
-        ],
-    }
-    Path(args.out).write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(f"stitched {len(items)} features -> {args.out}")
+        )
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"type": "FeatureCollection", "features": features}, indent=2), encoding="utf-8")
+
+
+def _cmd_stitch(args: argparse.Namespace) -> int:
+    items = _load_projected(Path(args.predictions))
+    passages = None
+    if args.passages:
+        passages = [p.coords for p in _load_projected(Path(args.passages))]
+    items = derive_from_canopies(items, tiles_dir=Path(args.tiles) if args.tiles else None, passages=passages)
+    _dump_geojson(items, Path(args.out))
+    print(f"derived {len(items)} features -> {args.out}")
     return 0
 
 
 def _cmd_cvat(args: argparse.Namespace) -> int:
-    # Minimal dry-run: one empty image per tile so the zip is complete.
+    from .cvat_parse import parse_cvat_zip
     from .tiles import list_tile_paths, parse_tile_name
 
-    tiles = list_tile_paths(Path(args.tiles))
-    images = []
-    for path in tiles:
-        parse_tile_name(path.name)
-        width = height = 1024
-        try:
-            import rasterio
+    tiles_dir = Path(args.tiles)
+    if args.from_cvat:
+        images = parse_cvat_zip(Path(args.from_cvat))
+    elif args.shapes:
+        images = images_from_projected(_load_projected(Path(args.shapes)), tiles_dir)
+    else:
+        images = []
+        for path in list_tile_paths(tiles_dir):
+            parse_tile_name(path.name)
+            width = height = 2048
+            try:
+                import rasterio
 
-            with rasterio.open(path) as src:
-                width, height = src.width, src.height
-        except Exception:
-            pass
-        images.append(CvatImage(name=path.name, width=width, height=height, shapes=[]))
+                with rasterio.open(path) as src:
+                    width, height = src.width, src.height
+            except Exception:
+                pass
+            images.append(CvatImage(name=path.name, width=width, height=height, shapes=[]))
     if args.xml_only:
         Path(args.out).write_text(render_annotations(images), encoding="utf-8")
         print(f"wrote XML for {len(images)} images")
         return 0
-    build_team_upload_zip(images, Path(args.tiles), Path(args.out))
+    if args.parts:
+        written = build_part_zips(
+            images,
+            tiles_dir,
+            Path(args.parts),
+            Path(args.out_dir),
+            task_name=args.task_name,
+        )
+        print(f"wrote {len(written)} part ZIPs in {args.out_dir}")
+        return 0
+    build_team_upload_zip(images, tiles_dir, Path(args.out), task_name=args.task_name)
     print(f"wrote {args.out} with {len(images)} tiles")
     return 0
 
@@ -148,15 +195,22 @@ def main(argv: list[str] | None = None) -> int:
     inv.add_argument("--allow-partial", action="store_true")
     inv.set_defaults(func=_cmd_inventory)
 
-    st = sub.add_parser("stitch", help="Merge cross-tile IDs")
+    st = sub.add_parser("stitch", help="Derive rows, inter-rows, and IDs from canopy polygons")
     st.add_argument("predictions")
     st.add_argument("--out", default="data/stitched.geojson")
+    st.add_argument("--tiles", default=None, help="tile directory for ExG cover")
+    st.add_argument("--passages", default=None, help="GeoJSON that splits blocks (roads)")
     st.set_defaults(func=_cmd_stitch)
 
-    cv = sub.add_parser("cvat-export", help="Build team_upload.zip (CVAT 1.1)")
+    cv = sub.add_parser("cvat-export", help="Build CVAT 1.1 ZIP(s) with shapes")
     cv.add_argument("tiles")
     cv.add_argument("--out", default="team_upload.zip")
     cv.add_argument("--xml-only", action="store_true")
+    cv.add_argument("--shapes", default=None, help="GeoJSON features to write into annotations.xml")
+    cv.add_argument("--from-cvat", default=None, help="existing CVAT ZIP to copy shapes from")
+    cv.add_argument("--parts", default=None, help="directory of official part*.zip (writes 5 ZIPs)")
+    cv.add_argument("--out-dir", default="data/cvat_zips")
+    cv.add_argument("--task-name", default="siret3")
     cv.set_defaults(func=_cmd_cvat)
 
     ms = sub.add_parser("measurements", help="Planar EPSG:32635 measurements")

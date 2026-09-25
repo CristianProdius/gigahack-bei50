@@ -37,7 +37,7 @@ def test_xml_has_version_and_original_names():
                     attributes={
                         "row_id": "R-V-0001-01",
                         "vineyard_id": "V-0001",
-                        "row_structure": "trellis",
+                        "row_structure": "regular",
                     },
                 ),
                 CvatShape(
@@ -47,6 +47,7 @@ def test_xml_has_version_and_original_names():
                     ytl=20,
                     xbr=40,
                     ybr=35,
+                    attributes={"vineyard_id": "V-0001"},
                 ),
             ],
         ),
@@ -63,4 +64,11 @@ def test_xml_has_version_and_original_names():
     assert 'label="row"' in xml
     assert 'xtl="20.00"' in xml
     assert "<attribute name=\"vineyard_id\">V-0001</attribute>" in xml
+    assert "<attribute name=\"row_structure\">regular</attribute>" in xml
+    assert "<name>waste</name>" in xml
+    assert "<type>rectangle</type>" in xml
+    assert "regular\ndisrupted\nunassessable" in xml
+    assert "bare_soil\nvegetation\nmixed\nunassessable" in xml
+    assert "trellis" not in xml
+    assert "cover_crop" not in xml
     assert Path("siret3_r001_c001.tif").suffix == ".tif"

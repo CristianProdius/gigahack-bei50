@@ -9,6 +9,8 @@ Challenge context (do not lose):
 - Official brief + must-haves: [`docs/challenge.md`](docs/challenge.md)
 - Score card (25 / 10 / 15 / 10 / 25 / 15): [`docs/scoring.md`](docs/scoring.md)
 - How to draw labels: [`docs/annotation-rules.md`](docs/annotation-rules.md)
+- Provider briefing vs PDF: [`docs/provider-briefing.md`](docs/provider-briefing.md)
+- SOTA lock (what we train): [`docs/sota-research.md`](docs/sota-research.md)
 - What this repo still has to build: [`docs/must-implement.md`](docs/must-implement.md)
 - Weekend runbook: [`docs/vineyard-plan.md`](docs/vineyard-plan.md)
 - Research catalog: [`docs/vineyard-research.md`](docs/vineyard-research.md)

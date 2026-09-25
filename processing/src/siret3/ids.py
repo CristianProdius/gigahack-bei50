@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass
 
 
@@ -16,6 +17,8 @@ class ProjectedPoly:
     score: float = 1.0
     vineyard_id: str | None = None
     row_id: str | None = None
+    row_structure: str | None = None
+    interrow_cover: str | None = None
     extras: dict | None = None
 
 
@@ -95,46 +98,99 @@ def _intersection_area(a: list[tuple[float, float]], b: list[tuple[float, float]
     return _overlap_1d(ax0, ax1, bx0, bx1) * _overlap_1d(ay0, ay1, by0, by1)
 
 
-def stitch_vineyards(
+def _segment_hits_passages(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    passages: list[list[tuple[float, float]]] | None,
+) -> bool:
+    if not passages:
+        return False
+    from shapely.geometry import LineString, Polygon
+
+    seg = LineString([a, b])
+    for ring in passages:
+        if len(ring) < 3:
+            continue
+        poly = Polygon(ring)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        if not poly.is_empty and seg.intersects(poly):
+            return True
+    return False
+
+
+def assign_block_ids(
     items: list[ProjectedPoly],
     *,
-    iou_threshold: float = 0.2,
-    min_overlap_m2: float = 8.0,
+    join_m: float = 6.0,
+    passages: list[list[tuple[float, float]]] | None = None,
 ) -> list[ProjectedPoly]:
+    """Assign V01, V02, … to plants. Keep one polygon per plant."""
     vines = [p for p in items if p.kind == "vineyard"]
     rest = [p for p in items if p.kind != "vineyard"]
+    if not vines:
+        return list(items)
+    cents = [centroid(v.coords) for v in vines]
     n = len(vines)
     _, find, union = _union_find(n)
     for i in range(n):
         for j in range(i + 1, n):
-            inter = _intersection_area(vines[i].coords, vines[j].coords)
-            if inter >= min_overlap_m2 or bbox_iou(vines[i].coords, vines[j].coords) >= iou_threshold:
+            d = ((cents[i][0] - cents[j][0]) ** 2 + (cents[i][1] - cents[j][1]) ** 2) ** 0.5
+            if d <= join_m and not _segment_hits_passages(cents[i], cents[j], passages):
                 union(i, j)
     groups: dict[int, list[int]] = {}
     for i in range(n):
         groups.setdefault(find(i), []).append(i)
     ranked = []
     for idxs in groups.values():
-        pts = [pt for k in idxs for pt in vines[k].coords]
-        cx, cy = centroid(pts)
-        ranked.append((cx, cy, idxs, pts))
+        cx = sum(cents[k][0] for k in idxs) / len(idxs)
+        cy = sum(cents[k][1] for k in idxs) / len(idxs)
+        ranked.append((cx, cy, idxs))
     ranked.sort(key=lambda t: (t[0], t[1]))
+    id_of = {}
+    for seq, (_cx, _cy, idxs) in enumerate(ranked, start=1):
+        vid = f"V{seq:02d}"
+        for k in idxs:
+            id_of[k] = vid
     out: list[ProjectedPoly] = []
-    for seq, (cx, cy, idxs, pts) in enumerate(ranked, start=1):
-        vid = f"V-{seq:04d}"
-        extras = {"hash": stable_hash_id("V", cx, cy), "n_parts": len(idxs)}
-        tiles = sorted({vines[k].tile for k in idxs})
-        out.append(
-            ProjectedPoly(
-                kind="vineyard",
-                coords=pts,
-                tile=",".join(tiles),
-                vineyard_id=vid,
-                extras=extras,
-            )
-        )
+    for i, vine in enumerate(vines):
+        vine.vineyard_id = id_of[i]
+        extras = dict(vine.extras or {})
+        extras["hash"] = stable_hash_id("V", *cents[i])
+        vine.extras = extras
+        out.append(vine)
     out.extend(rest)
     return out
+
+
+def stitch_vineyards(
+    items: list[ProjectedPoly],
+    *,
+    iou_threshold: float = 0.2,
+    min_overlap_m2: float = 8.0,
+) -> list[ProjectedPoly]:
+    """Deprecated alias: IDs only, geometries stay one-plant-per-polygon."""
+    del iou_threshold, min_overlap_m2
+    return assign_block_ids(items)
+
+
+def _row_heading(coords: list[tuple[float, float]]) -> float:
+    if len(coords) < 2:
+        return 0.0
+    dx = coords[-1][0] - coords[0][0]
+    dy = coords[-1][1] - coords[0][1]
+    return math.atan2(dy, dx) % math.pi
+
+
+def _heading_close(a: float, b: float, tol: float = 0.26) -> bool:
+    diff = abs(a - b) % math.pi
+    diff = min(diff, math.pi - diff)
+    return diff <= tol
+
+
+def _perp_offset(coords: list[tuple[float, float]], heading: float) -> float:
+    cx, cy = centroid(coords)
+    return -cx * math.sin(heading) + cy * math.cos(heading)
 
 
 def assign_row_ids(
@@ -161,15 +217,20 @@ def assign_row_ids(
 
     by_v: dict[str, list[ProjectedPoly]] = {}
     for r in rows:
-        by_v.setdefault(r.vineyard_id or "V-0000", []).append(r)
+        by_v.setdefault(r.vineyard_id or "V00", []).append(r)
 
-    assigned: list[ProjectedPoly] = []
     for vid, group in by_v.items():
         n = len(group)
         _, find, union = _union_find(n)
         for i in range(n):
             for j in range(i + 1, n):
-                if endpoint_gap(group[i].coords, group[j].coords) <= join_m:
+                if group[i].tile == group[j].tile:
+                    continue
+                hi = _row_heading(group[i].coords)
+                hj = _row_heading(group[j].coords)
+                if _heading_close(hi, hj) and abs(
+                    _perp_offset(group[i].coords, hi) - _perp_offset(group[j].coords, hi)
+                ) <= 1.5:
                     union(i, j)
         clusters: dict[int, list[int]] = {}
         for i in range(n):
@@ -178,19 +239,15 @@ def assign_row_ids(
         for idxs in clusters.values():
             pts = [pt for k in idxs for pt in group[k].coords]
             cx, cy = centroid(pts)
-            scored.append((cx, cy, idxs, pts))
+            scored.append((cx, cy, idxs))
         scored.sort(key=lambda t: (t[0], t[1]))
-        for seq, (cx, cy, idxs, pts) in enumerate(scored, start=1):
-            rid = f"R-{vid}-{seq:02d}"
-            tiles = sorted({group[k].tile for k in idxs})
-            assigned.append(
-                ProjectedPoly(
-                    kind="row",
-                    coords=pts,
-                    tile=",".join(tiles),
-                    vineyard_id=vid,
-                    row_id=rid,
-                    extras={"hash": stable_hash_id("R", cx, cy), "n_parts": len(idxs)},
-                )
-            )
-    return vines + assigned + other
+        for seq, (cx, cy, idxs) in enumerate(scored, start=1):
+            rid = f"{vid}-R{seq:02d}"
+            for k in idxs:
+                row = group[k]
+                row.row_id = rid
+                extras = dict(row.extras or {})
+                extras["hash"] = stable_hash_id("R", cx, cy)
+                extras["n_parts"] = len(idxs)
+                row.extras = extras
+    return vines + rows + other
