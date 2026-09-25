@@ -58,8 +58,15 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
 1. **Model (H100).** Riseholme COCO [10.5281/zenodo.19234907](https://doi.org/10.5281/zenodo.19234907) (CC-BY-4.0) + DroneWaste [10.5281/zenodo.17045559](https://doi.org/10.5281/zenodo.17045559) (CC-BY-4.0).
 
    ```bash
-   python models/train_yolo.py --task segment --data models/configs/vineyard.yaml --profile h100
+   python models/download_riseholme.py
+   python models/prepare_riseholme.py
+   python models/train_yolo.py --task segment --data datasets/riseholme-yolo/data.yaml --profile h100
    python models/train_yolo.py --task detect --data models/configs/waste.yaml --profile h100
+
+   CPU dry-run on this VM (no GPU):
+
+   python models/make_synth_yolo.py
+   python models/train_yolo.py --task segment --data models/configs/synth-vineyard.yaml --profile cpu --epochs 1
    ```
 
    16 GB: `--profile gpu16` or `HARDWARE_PROFILE=gpu16` (`yolo11s-seg`, imgsz 1024, batch 4).
@@ -74,8 +81,9 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
 
    ```bash
    siret3 inventory data/tiles --out data/tile_index.csv
-   siret3 stitch data/predictions/merged.geojson --out data/stitched.geojson
-   siret3 cvat-export data/tiles --out team_upload.zip
+   python models/infer_yolo.py --weights models/weights/vineyard.pt --tiles data/tiles --out data/predictions
+   siret3 stitch data/predictions --tiles data/tiles --out data/stitched.geojson
+   siret3 cvat-export data/tiles --geojson data/stitched.geojson --out team_upload.zip
    ```
 
    Dry-run three tiles before the full zip. Then publish in Marcaj.
@@ -117,6 +125,20 @@ None required. If you later use Ultralytics Platform, Roboflow train, Replicate,
 
 AGRIDS YOLO zip and the Kaggle Riseholme mirror are **NC / ND**. Do not use them.
 
+## Hardware (this VM vs H100)
+
+`models/hardware.py` picks `h100` / `gpu16` / `cpu` from `nvidia-smi` or `HARDWARE_PROFILE`.
+
+This cloud workspace has **no NVIDIA device** (`nvidia-smi` missing, `torch.cuda.is_available() == False`). Nothing in the environment points at a reachable H100 (`GPU_HOST` / `H100` unset). Training here is CPU-only (`yolo11n-seg`, imgsz 640, 1-epoch dry-run). On the user's H100:
+
+```bash
+python models/hardware.py
+HARDWARE_PROFILE=h100 python models/train_yolo.py --task segment --data datasets/riseholme-yolo/data.yaml --profile h100
+```
+
 ## Status
 
-Scaffold + research. Weights, the 311 tiles, and the scored Marcaj dump are not in git.
+- Research catalog is in [`docs/vineyard-research.md`](docs/vineyard-research.md).
+- Processing CLI: inventory, stitch (pixel→EPSG:32635, IDs, inter-rows), CVAT 1.1 zip, planar measurements, closed walk.
+- Sample COG chips may sit in `data/tiles/` for software tests. The organiser **311** pack is not in git. Do not publish those chips as the scored Marcaj set.
+- Weights and dataset zips are gitignored. Riseholme / DroneWaste live under `data/source/` when downloaded.
