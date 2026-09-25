@@ -49,6 +49,31 @@ def test_assign_block_ids_does_not_merge_polygons():
     assert len(near) == 1
 
 
+def test_assign_block_ids_keeps_plants_inside_passage_hole():
+    """Official passages are road buffers with vineyard interiors as holes.
+
+    A filled exterior would make every in-block plant–plant segment look like
+    it crosses a passage, so each plant would get its own vineyard_id.
+    """
+    hole = [(20.0, 20.0), (80.0, 20.0), (80.0, 80.0), (20.0, 80.0)]
+    exterior = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+    a = ProjectedPoly(
+        kind="vineyard",
+        coords=[(38.0, 48.0), (42.0, 48.0), (42.0, 52.0), (38.0, 52.0)],
+        tile="siret3_r001_c001.tif",
+    )
+    b = ProjectedPoly(
+        kind="vineyard",
+        coords=[(42.0, 48.0), (46.0, 48.0), (46.0, 52.0), (42.0, 52.0)],
+        tile="siret3_r001_c001.tif",
+    )
+    filled = assign_block_ids([a, b], passages=[exterior])
+    assert {v.vineyard_id for v in filled} == {"V01", "V02"}
+    out = assign_block_ids([a, b], passages=[(exterior, [hole])])
+    vines = [p for p in out if p.kind == "vineyard"]
+    assert {v.vineyard_id for v in vines} == {"V01"}
+
+
 def test_row_ids_join_across_seam():
     vine = ProjectedPoly(
         kind="vineyard",

@@ -5,6 +5,9 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from shapely.geometry import Polygon
+from shapely.ops import unary_union
+
 from .ids import ProjectedPoly, centroid
 
 
@@ -49,11 +52,65 @@ def measure(item: ProjectedPoly) -> dict:
         "tile_names": item.tile,
         "centroid_x": f"{centroid(item.coords)[0]:.3f}",
         "centroid_y": f"{centroid(item.coords)[1]:.3f}",
+        "area_ha": f"{(area / 10000.0):.6f}" if area != "" else "",
     }
 
 
+def _poly(item: ProjectedPoly):
+    if len(item.coords) < 3:
+        return None
+    ring = item.coords if item.coords[0] == item.coords[-1] else list(item.coords) + [item.coords[0]]
+    geom = Polygon(ring)
+    if not geom.is_valid:
+        geom = geom.buffer(0)
+    return None if geom.is_empty else geom
+
+
+def summary_rows(items: list[ProjectedPoly]) -> list[dict]:
+    vines = [p for p in items if p.kind == "vineyard"]
+    inter = [p for p in items if p.kind == "interrow_area"]
+    rows = [p for p in items if p.kind == "row"]
+    vine_ids = {p.vineyard_id for p in vines if p.vineyard_id}
+    row_ids = {p.row_id for p in rows if p.row_id}
+
+    canopy = unary_union([g for g in (_poly(p) for p in vines) if g is not None])
+    inter_u = unary_union([g for g in (_poly(p) for p in inter) if g is not None])
+    canopy_m2 = float(canopy.area) if not canopy.is_empty else 0.0
+    inter_m2 = float(inter_u.area) if not inter_u.is_empty else 0.0
+
+    length_by_row: dict[str, float] = {}
+    for r in rows:
+        rid = r.row_id or ""
+        length_by_row[rid] = length_by_row.get(rid, 0.0) + _line_length(r.coords)
+    total_len = sum(length_by_row.values())
+
+    def row(kind: str, **kwargs) -> dict:
+        base = {
+            "kind": kind,
+            "id": "",
+            "vineyard_id": "",
+            "area_m2": "",
+            "area_ha": "",
+            "length_m": "",
+            "n_parts": "",
+            "tile_names": "",
+            "centroid_x": "",
+            "centroid_y": "",
+        }
+        base.update({k: str(v) if v != "" else "" for k, v in kwargs.items()})
+        return base
+
+    return [
+        row("n_blocks", n_parts=len(vine_ids)),
+        row("n_rows", n_parts=len(row_ids)),
+        row("canopy_union", area_m2=f"{canopy_m2:.3f}", area_ha=f"{canopy_m2 / 10000.0:.6f}"),
+        row("interrow_union", area_m2=f"{inter_m2:.3f}", area_ha=f"{inter_m2 / 10000.0:.6f}"),
+        row("total_row_length", length_m=f"{total_len:.3f}"),
+    ]
+
+
 def write_csv(items: list[ProjectedPoly], out_csv: Path) -> None:
-    rows = [measure(item) for item in items]
+    rows = [measure(item) for item in items] + summary_rows(items)
     out_csv = Path(out_csv)
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -61,6 +118,7 @@ def write_csv(items: list[ProjectedPoly], out_csv: Path) -> None:
         "id",
         "vineyard_id",
         "area_m2",
+        "area_ha",
         "length_m",
         "n_parts",
         "tile_names",
