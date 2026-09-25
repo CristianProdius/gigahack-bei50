@@ -120,7 +120,10 @@ def _cmd_stitch(args: argparse.Namespace) -> int:
     items = _load_projected(Path(args.predictions))
     passages = None
     if args.passages:
-        passages = [p.coords for p in _load_projected(Path(args.passages))]
+        passages = []
+        for p in _load_projected(Path(args.passages)):
+            holes = (p.extras or {}).get("holes") or []
+            passages.append((p.coords, holes) if holes else p.coords)
     items = derive_from_canopies(items, tiles_dir=Path(args.tiles) if args.tiles else None, passages=passages)
     _dump_geojson(items, Path(args.out))
     print(f"derived {len(items)} features -> {args.out}")

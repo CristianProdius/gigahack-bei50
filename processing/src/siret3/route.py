@@ -341,16 +341,13 @@ def write_route_geojson(
                     "length_m": round(length, 3),
                     "crs_measured": "EPSG:32635",
                     "start_tolerance_m": START_TOLERANCE_M,
+                    "start_x": float(start_xy[0]),
+                    "start_y": float(start_xy[1]),
                 },
                 "geometry": {
                     "type": "LineString",
                     "coordinates": [[float(x), float(y)] for x, y in coords_32635],
                 },
-            },
-            {
-                "type": "Feature",
-                "properties": {"kind": "start"},
-                "geometry": {"type": "Point", "coordinates": [float(start_xy[0]), float(start_xy[1])]},
             },
         ],
     }

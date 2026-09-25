@@ -98,23 +98,44 @@ def _intersection_area(a: list[tuple[float, float]], b: list[tuple[float, float]
     return _overlap_1d(ax0, ax1, bx0, bx1) * _overlap_1d(ay0, ay1, by0, by1)
 
 
+def _is_xy(pt) -> bool:
+    return isinstance(pt, (tuple, list)) and len(pt) >= 2 and isinstance(pt[0], (int, float))
+
+
+def _passage_polygon(spec):
+    """Ring [(x,y), ...] or (exterior, holes) with vineyard interiors as holes."""
+    from shapely.geometry import Polygon
+
+    if not spec:
+        return None
+    if _is_xy(spec[0]):
+        if len(spec) < 3:
+            return None
+        poly = Polygon(spec)
+    else:
+        exterior = spec[0]
+        holes = spec[1] if len(spec) > 1 else []
+        if not exterior or len(exterior) < 3:
+            return None
+        poly = Polygon(exterior, holes or [])
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    return poly if not poly.is_empty else None
+
+
 def _segment_hits_passages(
     a: tuple[float, float],
     b: tuple[float, float],
-    passages: list[list[tuple[float, float]]] | None,
+    passages: list | None,
 ) -> bool:
     if not passages:
         return False
-    from shapely.geometry import LineString, Polygon
+    from shapely.geometry import LineString
 
     seg = LineString([a, b])
-    for ring in passages:
-        if len(ring) < 3:
-            continue
-        poly = Polygon(ring)
-        if not poly.is_valid:
-            poly = poly.buffer(0)
-        if not poly.is_empty and seg.intersects(poly):
+    for spec in passages:
+        poly = _passage_polygon(spec)
+        if poly is not None and seg.intersects(poly):
             return True
     return False
 
@@ -123,7 +144,7 @@ def assign_block_ids(
     items: list[ProjectedPoly],
     *,
     join_m: float = 6.0,
-    passages: list[list[tuple[float, float]]] | None = None,
+    passages: list | None = None,
 ) -> list[ProjectedPoly]:
     """Assign V01, V02, … to plants. Keep one polygon per plant."""
     vines = [p for p in items if p.kind == "vineyard"]

@@ -103,6 +103,8 @@ def test_write_route_geojson_is_32635(tmp_path: Path):
     assert abs(last[0] - OFFICIAL_START[0]) < 5
     assert first[0] > 1000  # metres, not lon
     assert "length_m" in data["features"][0]["properties"]
+    assert len(data["features"]) == 1
+    assert {f["geometry"]["type"] for f in data["features"]} == {"LineString"}
 
 
 def test_closed_walk_rejects_illegal_when_required():

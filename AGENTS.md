@@ -57,7 +57,7 @@ Scoring uses a hidden subset. Annotate all 311 tiles.
 
 ## Label schema (from the example ZIP)
 
-The example `annotations.xml` is the schema to match. The stub in `processing/src/siret3/cvat11.py` still lists older select values (`trellis` / `guyot`, `grass` / `soil` / `cover_crop`). Do not copy those into an upload.
+The example `annotations.xml` is the schema to match. `processing/src/siret3/cvat11.py` now writes these official enums (not the old `trellis` / `guyot` / `grass` stub).
 
 | Label | Geometry | Attributes |
 | --- | --- | --- |
@@ -72,11 +72,66 @@ Example images inside the zip: `siret3_r021_c012.tif`, `siret3_r006_c004.tif`, b
 
 | Path | What |
 | --- | --- |
-| `processing/` | `siret3` CLI: inventory, stitch, CVAT export, planar measurements, closed route. |
-| `models/` | YOLO11 and SAM stubs. Train on Riseholme and DroneWaste, not on Sireț3 labels drawn outside Marcaj. |
+| `processing/` | `siret3` CLI: inventory, stitch (derive rows/IDs), CVAT 1.1 export, inspect, measurements, closed route. |
+| `models/` | YOLO11m-seg canopy + YOLO12 waste. Train on Riseholme / DroneWaste only. Infer: `models/infer_yolo.py`. |
 | `web/` | Next.js + MapLibre on port 43173. Sample layers are synthetic until the Marcaj export. |
-| `route.geojson`, `measurements.csv` | Sample until replaced by the Marcaj export. |
-| `data/tiles/` | Unzipped challenge tiles. Empty in git. |
+| `route.geojson`, `measurements.csv` | Sample until rebuilt from the Marcaj export. |
+| `data/tiles/` | 311 unzipped challenge tiles (local, gitignored). |
+| `models/weights/` | Gitignored. Local `vineyard.pt` (43 MB, copied from H100 25 Sep). `waste.pt` after train. |
+
+GitHub (live): [CristianProdius/bei50](https://github.com/CristianProdius/bei50). Do not use the leftover public starter `cristian-frunze/gigahack-bei50` (no admin from this machine).
+
+## Weekend state (2026-09-25 night)
+
+Deadline Sunday 27 Sep 2026, 15:00 Europe/Chisinau. Locked stack: public-data train → GIS derive → one Marcaj import → hand-correct. Do not label Sireț3 outside Marcaj. Do not start another H100 job until waste train ends.
+
+### Done in code (43→44 tests in `processing/`)
+
+- Parse official example CVAT; pixel ↔ EPSG:32635 (`cvat_parse.py`, `georef.py`).
+- Derive rows / inter-rows / IDs / attributes from **one polygon per plant** (`derive.py`, `ids.py`). Gold on examples: V01 25 rows / 399 plants, V02 26 rows / 251 plants. `row_structure` from ≥ 5 m along-row gap. `interrow_cover` from ExG when `--tiles` is set.
+- Block IDs `V01`…; row IDs `V01-R01`…; roads split blocks. Official `passages.geojson` holes are kept so vineyard interiors are not treated as road. `join_m` default 6.0 (5.0 split V02 on the examples).
+- Five-part CVAT ZIPs, original TIFF names, official enums, hard fail at 90 MB (`cvat11.py`).
+- `siret3 inspect`: gap midpoints `INS-{row_id}-{n}` (not a Marcaj label).
+- `siret3 measurements`: union canopy / inter-row m²+ha, `n_blocks`, `n_rows`, stitched row length.
+- `siret3 route`: closed LineString **EPSG:32635**, official start 629504.70, 5220250.75 ± 5 m, passable = inter-row ∪ passages − forbidden (holes kept), fail if > 2% length illegal. One Feature only (`length_m` + `start_x`/`start_y` properties).
+- Spec/plan: `docs/superpowers/specs/2026-09-25-closed-route-design.md`, `docs/superpowers/plans/2026-09-25-closed-route.md`.
+
+### Models / GPU (`ssh gpu-server`, `/home/prodius/projects/bei50`)
+
+- Canopy **YOLO11m-seg** on Riseholme: done. Local `models/weights/vineyard.pt`. Remote val mAP50 ~0.73.
+- Waste **YOLO12m detect** on DroneWaste (1 class, 4245 train / 748 val, ~76% empty images, native 640 px, we train imgsz 1280): still running as of ~23:41 local, epoch ~31–33 / 60, mAP50 ~0.27 and still climbing. Published 20-class ceiling is 38.5% (YOLO12x). Only GPU process is `prodius` PID 1070492. Angel is not on the card. Do not start a second job.
+- After epoch 60: copy `runs/detect/models/runs/detect-yolo12-h100/weights/best.pt` → `models/weights/waste.pt` (remote + local). Infer waste at `--conf 0.4`.
+
+### Still to do (score-critical)
+
+1. Wait for waste train (~75–90 min from 23:41). Copy `waste.pt`.
+2. Infer all 311 tiles on the H100 (faster than this Mac): canopy then waste.
+3. `siret3 stitch` + `siret3 cvat-export --parts` → 5 ZIPs ≤ 90 MB. Dry-run part 4 (already 89.75 MiB of TIFFs).
+4. Marcaj: upload all five, confirm 311, **publish once**, correct, **submit every job**.
+5. Rebuild `route.geojson` + `measurements.csv` from the **Marcaj export**, not raw model output.
+6. Web: replace SAMPLE layers; README: weight URL, 311-tile time, hardware.
+
+Known leftovers (do not block infer): inter-row export is exterior-only (can overlap canopy); `legal_path` uses a 0.35 m pad vs 0.05 m score slop; targets > 2 m from passable are dropped; stitch `--tiles` missing → `bare_soil` not `unassessable`; CLI `--passages`/`--forbidden` have no official-pack default.
+
+### Commands
+
+```bash
+# after waste.pt exists on gpu-server
+ssh gpu-server 'cd /home/prodius/projects/bei50 && .venv/bin/python models/infer_yolo.py --weights models/weights/vineyard.pt --tiles data/tiles --out data/predictions'
+ssh gpu-server 'cd /home/prodius/projects/bei50 && .venv/bin/python models/infer_yolo.py --weights models/weights/waste.pt --tiles data/tiles --out data/predictions_waste --conf 0.4'
+
+siret3 stitch data/predictions/merged.geojson --tiles data/tiles --passages data/challenge/02_route/passages.geojson --out data/stitched.geojson
+siret3 cvat-export data/tiles --shapes data/stitched.geojson --parts data/challenge/01_tiles --out-dir data/cvat_zips
+siret3 inspect data/stitched.geojson --out inspections.geojson
+siret3 measurements data/stitched.geojson --out measurements.csv
+siret3 route data/stitched.geojson \
+  --start-file data/challenge/02_route/start.geojson \
+  --passages data/challenge/02_route/passages.geojson \
+  --forbidden data/challenge/02_route/forbidden.geojson \
+  --out route.geojson
+```
+
+Infer writes per-tile GeoJSON in **pixel** space. Project with `georef.pixels_to_xy` and merge into one FeatureCollection before `siret3 stitch` (that glue is not a CLI command yet).
 
 ## Do not
 
@@ -84,3 +139,4 @@ Example images inside the zip: `siret3_r021_c012.tif`, `siret3_r006_c004.tif`, b
 - Use AGRIDS or the Kaggle Riseholme mirror (NC / ND).
 - Commit `data/challenge/01_tiles/*.zip`, `data/challenge/04_source/*.tif`, `data/tiles/*.tif`, or `models/weights/`.
 - Treat the root `route.geojson` start as official. The official start is `data/challenge/02_route/start.geojson`.
+- Start another H100 job while waste train holds the card.
