@@ -1,19 +1,34 @@
-[project]
-name = "siret3"
-version = "0.1.0"
-requires-python = ">=3.11"
-dependencies = ["rasterio", "geopandas", "shapely", "networkx", "click"]
-
-[project.optional-dependencies]
-dev = ["pytest"]
-route-ortools = ["ortools"]
-
-[project.scripts]
-siret3 = "siret3.cli:main"
-
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "siret3"
+version = "0.1.0"
+description = "Siret3 vineyard spatial pipeline: tiles, CVAT 1.1, measurements (EPSG:32635), closed route."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "gigahack-bei50" }]
+dependencies = [
+  "rasterio>=1.3",
+  "geopandas>=1.0",
+  "shapely>=2.0",
+  "pyproj>=3.6",
+  "networkx>=3.2",
+  "numpy>=1.26",
+  "lxml>=5.0",
+]
+
+[project.optional-dependencies]
+route-ortools = ["ortools>=9.10"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+siret3 = "siret3.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
