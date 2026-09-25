@@ -49,7 +49,7 @@ Old `tiles.openaerialmap.org` is deprecated (no CORS on redirect). Do not use it
 
 ### Area note (do not invent 145 ha from the bbox)
 
-The STAC bbox rectangle is about **332 ha**. The full raster canvas (width × height × GSD²) is about **713 ha**, mostly nodata around a rotated flight. The challenge figure **~145 ha** is the flown / vineyard AOI, not the padded GeoTIFF. Use valid-pixel area from the tiles, not the bbox.
+The official dataset brief ([`siret3-dataset.md`](siret3-dataset.md)) says **~1.45 km² / 145 ha** from the OAM preview **alpha mask**, and that the **3.32 km²** bounding rectangle includes empty margins. The full raster canvas (width × height × GSD²) is about **713 ha**, mostly nodata around a rotated flight. Use valid-pixel area from the tiles, not the bbox. Survey map centre on the brief is 47.122392 N, 28.712051 E — not the route start.
 
 Neighbour items from the same producer (do not mix into the scored set):
 

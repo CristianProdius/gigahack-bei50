@@ -7,6 +7,7 @@ Deadline: Sunday 27 Sep 2026, 15:00 Chișinău. Marcaj is the scored annotation 
 Challenge context (do not lose):
 
 - Official brief + must-haves: [`docs/challenge.md`](docs/challenge.md)
+- Sireț3 imagery card: [`docs/siret3-dataset.md`](docs/siret3-dataset.md)
 - Score card (25 / 10 / 15 / 10 / 25 / 15): [`docs/scoring.md`](docs/scoring.md)
 - How to draw labels: [`docs/annotation-rules.md`](docs/annotation-rules.md)
 - Provider briefing vs PDF: [`docs/provider-briefing.md`](docs/provider-briefing.md)
@@ -27,7 +28,8 @@ processing/           rasterio / geopandas / shapely / NetworkX pipeline
 models/               YOLO11 + SAM/SAM2/MobileSAM stubs
 web/                  Next.js + MapLibre (port 43173)
 data/tiles/           unzip the 311 siret3_rXXX_cYYY.tif here before inventory
-route.geojson         closed walk (sample until Marcaj export)
+route.geojson         inspector walk: gaps + waste (25% file; sample until Marcaj export)
+route_farmer.geojson  farmer walk: waste only (required; generate with the inspector file)
 measurements.csv      planar m / m² (sample until Marcaj export)
 ```
 
@@ -46,7 +48,7 @@ Copied from the Marcaj Drive download into [`data/challenge/`](data/challenge/).
 | `data/challenge/02_route/forbidden.geojson` | Forbidden zones. MultiPolygon, `type` = `forbidden`. |
 | `data/challenge/02_route/study_area.geojson` | Outline of the 311 tiles. |
 | `data/challenge/02_route/preview_passages_forbidden.png` | Preview of passages and forbidden zones. |
-| `data/challenge/03_docs/` | Challenge description, annotation rules, Marcaj quick start (PDF). |
+| `data/challenge/03_docs/` | Challenge description, annotation rules, Marcaj quick start, Sireț3 dataset brief (PDF). |
 | `data/challenge/04_source/siret3_source_orthomosaic_EPSG4326.tif` | Full source orthomosaic, EPSG:4326, as on OpenAerialMap. For whole-survey training only. |
 | `data/challenge/05_examples/siret3_examples_cvat.zip` | Two annotated tiles in CVAT for images 1.1. Not scored. |
 | `data/challenge/05_examples/preview_siret3_r021_c012.jpg` | Young vines, block `V01`: 25 regular rows, 399 canopies, 24 bare-soil inter-rows. |
@@ -117,20 +119,24 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
 
    ```bash
    siret3 measurements data/stitched.geojson --out measurements.csv
-   siret3 route data/stitched.geojson --start 28.7073776,47.1230335 --out route.geojson
+   siret3 route data/stitched.geojson --targets inspections,waste --out route.geojson
+   siret3 route data/stitched.geojson --targets waste --out route_farmer.geojson
    ```
 
-   Start must snap within 5 m. Walk uses inter-row + authorised passages only.
+   Start must snap within 5 m. Both walks use inter-row + authorised passages only. Inspector = 25% file. Farmer = waste collect.
 
-5. **Web UI.** Refresh the map. Replace `web/public/layers/sample.geojson` and root `route.geojson` with the real export.
+5. **Web UI.** Refresh the map. Replace SAMPLE layers. Show inspector (blue) and farmer (red) with each `length_m`.
 
 ## Sireț3 imagery
 
 | | |
 | --- | --- |
 | OpenAerialMap | [Sireț3 STAC item](https://api.imagery.hotosm.org/stac/collections/openaerialmap/items/683060c4025981aa411253c8) |
-| Date | 20 May 2025 |
-| GSD | 3.52 cm/px |
+| Date | 20 May 2025 (UTC) |
+| GSD | 3.52 cm/px on the source ortho (resolution, not accuracy). Challenge tiles are 2.5 cm/px |
+| Sensor | UAV / Mavic 3E, 3DATA COLLECT |
+| Area | ~145 ha / 1.45 km² (OAM alpha mask). 3.32 km² bbox includes empty margins |
+| Source file | 658.6 MB RGB GeoTIFF, EPSG:4326, 70,246 × 81,986 px |
 | Licence | CC BY 4.0, producer 3DATA COLLECT |
 | XYZ | `https://api.imagery.hotosm.org/raster/collections/openaerialmap/items/683060c4025981aa411253c8/tiles/WebMercatorQuad/{z}/{x}/{y}?assets=visual` |
 

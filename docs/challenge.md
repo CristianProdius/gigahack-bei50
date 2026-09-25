@@ -1,6 +1,6 @@
 # Vineyard AI Field Challenge — official brief
 
-Source of truth for **what this repo must ship**. Transcribed from `data/challenge/03_docs/Vineyard_AI_Field_Challenge_description.pdf` (Deeptech GigaHack 2026, Marcaj, 25–27 September 2026). Scoring lives in [`scoring.md`](scoring.md). How to draw labels lives in [`annotation-rules.md`](annotation-rules.md). What is still missing in this repo lives in [`must-implement.md`](must-implement.md).
+Source of truth for **what this repo must ship**. Transcribed from `data/challenge/03_docs/Vineyard_AI_Field_Challenge_description.pdf` (Deeptech GigaHack 2026, Marcaj, 25–27 September 2026), plus the **26 Sep clarification: two walking routes** (government inspector and farmer). The packed PDF may still describe one walk until organizers replace it. Scoring lives in [`scoring.md`](scoring.md). How to draw labels lives in [`annotation-rules.md`](annotation-rules.md). Imagery card: [`siret3-dataset.md`](siret3-dataset.md). What is still missing in this repo lives in [`must-implement.md`](must-implement.md).
 
 **Deadline:** 15:00 Sunday 27 September 2026, Europe/Chisinau. Repository link **and** Marcaj project. Marcaj is frozen at the deadline; organizers export annotations.
 
@@ -17,6 +17,8 @@ Vineyard operators need maps of planting, row structure, visible waste, and loca
 Moldova agriculture ministry estimate for 2026 vineyard maintenance: MDL 52,000–80,000 per hectare (including depreciation). A 20 ha holding: MDL 1.04–1.60 million per year.
 
 Expected benefit: less preparation and walking time while covering the planting, including subsidy-area audits. Example: shorten 6 km to 4.2 km = 30% less walking, 27 minutes at 4 km/h.
+
+Two users, two walks (26 Sep): a **government inspector** covers missed/dead vines **and** waste; a **farmer** collects waste only. Both start and finish at the official start, stay on passable geometry, and are shown on the web (blue / red).
 
 ## Challenge brief
 
@@ -39,9 +41,9 @@ Final deliverable = neural-network model + Marcaj annotations + measurements + r
 | 7 | **Inspection locations** | Visible row gaps / missing planting, each with an ID, coordinates, and links to `vineyard_id` / `row_id`. Together with waste, these are the **route targets**. They go in the **application output**, not into Marcaj. |
 | 8 | **Counts and measurements** | Unique blocks and rows. Individual and total row lengths. Canopy area = union of canopy polygons. Inter-row area. Areas in m² **and** hectares, lengths in metres, **EPSG:32635**, horizontal only (no DEM). |
 | 9 | **Annotation in Marcaj** | Upload supplied tiles + AI pre-annotations. Correct geometry and attributes **only** in Marcaj. |
-| 10 | **Walking route** | From the official start, visit inspection + waste targets, stay on passable inter-rows + authorised passages, never through canopies / fences / forbidden zones, minimise length, **return to start**. |
-| 11 | **Web interface** | Routes as polylines with lengths; `vineyard_id` / `row_id`; canopy and inter-row areas; block and row counts; individual and total row lengths. |
-| 12 | **Submission** | Georeferenced route, measurement tables, application and processing code, repro instructions, model weights or a way to obtain them. Annotations are taken from Marcaj, not from a file we upload at the deadline. |
+| 10 | **Walking routes (two)** | **Inspector:** from the official start, visit inspection (gaps / missing planting) **and** waste, stay on passable inter-rows + authorised passages, never through canopies / fences / forbidden zones, minimise length, **return to start**. **Farmer:** same graph and start, **waste only** (collect after inspection), return to start. Both are required. |
+| 11 | **Web interface** | Both routes as polylines with lengths (inspector blue, farmer red); `vineyard_id` / `row_id`; canopy and inter-row areas; block and row counts; individual and total row lengths. |
+| 12 | **Submission** | Two georeferenced routes, measurement tables, application and processing code, repro instructions, model weights or a way to obtain them. Annotations are taken from Marcaj, not from a file we upload at the deadline. |
 
 ## Annotation conventions (names must match exactly)
 
@@ -71,7 +73,7 @@ Full drawing rules: [`annotation-rules.md`](annotation-rules.md) and `data/chall
 
 ## Data
 
-Primary: Sireț3 / Siret3, OpenAerialMap, 3DATA COLLECT. Unannotated RGB GeoTIFF orthomosaic, 20 May 2025, UAV, 3.52 cm/px, ~145 ha. Challenge tiles are that mosaic reprojected to EPSG:32635 and cut. CC BY 4.0.
+Primary: Sireț3 / Siret3, OpenAerialMap, 3DATA COLLECT. Unannotated RGB GeoTIFF orthomosaic, 20 May 2025 (UTC), UAV **Mavic 3E**, reported GSD **3.52 cm/px** (resolution, not accuracy; no RMSE published). Imaged area **~1.45 km² / 145 ha** from the OAM alpha mask — the 3.32 km² bounding rectangle includes empty margins. Source file 658.6 MB, 70,246 × 81,986 px, EPSG:4326. Survey centre 47.122392 N, 28.712051 E (not the route start). Challenge tiles are that mosaic reprojected to EPSG:32635 and cut. CC BY 4.0. Full card: [`siret3-dataset.md`](siret3-dataset.md) / `data/challenge/03_docs/Marcaj_Siret3_Dataset_Brief_EN.pdf`.
 
 Suggested open training data (verify licences):
 
@@ -91,6 +93,7 @@ Adapt for scale, season, and appearance.
 | Annotation rules | PDF | `data/challenge/03_docs/Vineyard_AI_annotation_rules.pdf` |
 | Example tiles (not scored) + upload template | CVAT 1.1 | `data/challenge/05_examples/` |
 | Marcaj quick start | PDF | `data/challenge/03_docs/Marcaj_quick_start_for_teams.pdf` |
+| Sireț3 dataset brief | PDF | `data/challenge/03_docs/Marcaj_Siret3_Dataset_Brief_EN.pdf` |
 | Full source orthomosaic | GeoTIFF, EPSG:4326 | `data/challenge/04_source/` |
 
 Official start: X 629504.70, Y 5220250.75 (47.1230335 N, 28.7073776 E), tile `siret3_r018_c010.tif`.
@@ -127,9 +130,10 @@ Single repository link. Root **must** contain:
 
 | File | Requirement |
 | --- | --- |
-| `route.geojson` | One **LineString in EPSG:32635** that starts and ends at the official start (5 m tolerance), property `length_m`. |
+| `route.geojson` | **Inspector** walk. One **LineString in EPSG:32635** that starts and ends at the official start (5 m tolerance), property `length_m`. Targets = inspections + waste. This is the file the **25%** route score uses. |
+| `route_farmer.geojson` | **Farmer** walk. Same schema (one LineString, EPSG:32635, `length_m`, closed at official start). Targets = **waste only**. Required deliverable and web layer; not the 25% metric source unless a later PDF says so. |
 | `measurements.csv` | Block and row counts, row lengths and areas by `vineyard_id` / `row_id`. |
-| `README.md` | Install and run from supplied tiles → `route.geojson` + `measurements.csv`. Pinned dependencies (Dockerfile is a plus). Where to get weights. Full-tile-set processing time and hardware. Any paid APIs or LLMs. Link to the working web interface. |
+| `README.md` | Install and run from supplied tiles → both routes + `measurements.csv`. Pinned dependencies (Dockerfile is a plus). Where to get weights. Full-tile-set processing time and hardware. Any paid APIs or LLMs. Link to the working web interface. |
 | Code | Application + processing. Weights or a reproducible download. |
 
 Annotations are **not** submitted as a file. Organizers export Marcaj at 15:00.
@@ -140,9 +144,9 @@ Annotations are **not** submitted as a file. Organizers export Marcaj at 15:00.
 - Allowed: open pretrained models (SAM, YOLO, …), open datasets with verified licences, libraries, classical CV. Paid APIs / LLMs if reproducible and listed in the README.
 - Sireț3 drawing: Marcaj only. Other data for training: unrestricted. You may retile the ortho for training; submission annotations are on the **supplied** tiles.
 - Not allowed: another team’s annotations.
-- Pitch: 5 min + 5 min questions. Show the working web interface (map, objects, IDs, measurements, route). Laptop demo is accepted; deployed URL goes in the README.
+- Pitch: 5 min + 5 min questions. Show the working web interface (map, objects, IDs, measurements, **both** routes). Laptop demo is accepted; deployed URL goes in the README.
 - Support: GigaHack Slack challenge channel, Marcaj team 09:00–23:00. Pinned clarifications apply to all teams.
 
 ## Current repo gaps vs this brief
 
-The scaffold still has a **sample** `route.geojson` in EPSG:4326 (not 32635) and a **sample** `measurements.csv`. The CVAT writer still emits old attribute values. Inspection-target export is not built. See [`must-implement.md`](must-implement.md).
+The scaffold still has a **sample** `route.geojson` in EPSG:4326 (not 32635) and a **sample** `measurements.csv`. `route_farmer.geojson` is not generated yet. Inspection-target export exists in the CLI; rebuild both walks from the Marcaj export. See [`must-implement.md`](must-implement.md).

@@ -25,5 +25,14 @@ def pixels_to_xy(tile: Path, points: list[tuple[float, float]]) -> list[tuple[fl
     return [pixel_to_xy(tile, c, r) for c, r in points]
 
 
+def pixels_to_xy_once(tile: Path, points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Project many pixel points with one GeoTIFF open."""
+    import rasterio
+
+    with rasterio.open(tile) as src:
+        transform = src.transform
+        return [tuple(map(float, transform @ (c, r))) for c, r in points]
+
+
 def xy_to_pixels(tile: Path, points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return [xy_to_pixel(tile, x, y) for x, y in points]

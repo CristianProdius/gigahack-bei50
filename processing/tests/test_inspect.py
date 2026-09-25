@@ -1,5 +1,5 @@
 from siret3.ids import ProjectedPoly
-from siret3.inspect import inspections_from_canopies
+from siret3.inspect import inspections_from_canopies, select_waypoints
 
 
 def _plant(x: float, y: float, vid: str = "V01") -> ProjectedPoly:
@@ -43,3 +43,27 @@ def test_regular_row_emits_no_inspection():
         tile="siret3_r001_c001.tif",
     )
     assert inspections_from_canopies(plants + [row]) == []
+
+
+def test_select_waypoints_inspector_includes_gap_and_waste():
+    plants = [_plant(0.0, 0.0), _plant(1.2, 0.0), _plant(7.4, 0.0), _plant(8.6, 0.0)]
+    row = ProjectedPoly(
+        kind="row",
+        vineyard_id="V01",
+        row_id="V01-R01",
+        row_structure="disrupted",
+        coords=[(0.0, 0.0), (8.6, 0.0)],
+        tile="siret3_r001_c001.tif",
+    )
+    waste = ProjectedPoly(
+        kind="waste",
+        vineyard_id="V01",
+        coords=[(1.0, 3.0), (2.0, 3.0), (2.0, 4.0), (1.0, 4.0)],
+        tile="siret3_r001_c001.tif",
+    )
+    items = plants + [row, waste]
+    inspector = select_waypoints(items, {"inspections", "waste"})
+    farmer = select_waypoints(items, {"waste"})
+    assert len(inspector) == 2
+    assert len(farmer) == 1
+    assert farmer[0] == inspector[1] or farmer[0] in inspector

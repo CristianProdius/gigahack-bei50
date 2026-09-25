@@ -1,24 +1,45 @@
 @import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #1c2422;
+  --panel: #222a28;
+  --panel-border: rgb(178 193 188 / 0.36);
+  --lime: #d1fb55;
+  --blue: #438bff;
+  --orange: #ffa443;
+  --red: #f05d55;
+  --z-map: 0;
+  --z-overlay: 10;
+  --z-chrome: 20;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-body {
-  background: #fafaf9;
-  color: #1c1917;
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-lime: var(--lime);
+  --color-route-blue: var(--blue);
+  --color-route-red: var(--red);
+  --color-waste: var(--orange);
+  --font-sans: var(--font-manrope);
 }
 
 html,
 body {
   height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #111614;
+  color: #e8eee9;
+  font-family: var(--font-manrope), Arial, Helvetica, sans-serif;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
+
+.maplibregl-ctrl-bottom-right {
+  margin-bottom: 8px;
 }

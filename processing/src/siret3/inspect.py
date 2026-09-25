@@ -61,3 +61,21 @@ def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
 
 def waste_targets(items: list[ProjectedPoly]) -> list[tuple[float, float]]:
     return [centroid(p.coords) for p in items if p.kind == "waste" and p.coords]
+
+
+def parse_targets(raw: str) -> set[str]:
+    parts = {p.strip().lower() for p in (raw or "").split(",") if p.strip()}
+    allowed = {"inspections", "waste"}
+    unknown = parts - allowed
+    if unknown:
+        raise ValueError(f"unknown route targets {sorted(unknown)}; use inspections,waste")
+    return parts or {"inspections", "waste"}
+
+
+def select_waypoints(items: list[ProjectedPoly], targets: set[str]) -> list[tuple[float, float]]:
+    pts: list[tuple[float, float]] = []
+    if "inspections" in targets:
+        pts.extend(centroid(p.coords) for p in inspections_from_canopies(items) if p.coords)
+    if "waste" in targets:
+        pts.extend(waste_targets(items))
+    return pts

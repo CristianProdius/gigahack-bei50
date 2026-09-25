@@ -14,6 +14,7 @@ GigaHack 2026, Marcaj Vineyard AI Field Challenge, Sireț3. Deadline Sunday 27 S
 | [`docs/must-implement.md`](docs/must-implement.md) | Brief → this repo: gaps, pipeline, checklists |
 | [`docs/vineyard-plan.md`](docs/vineyard-plan.md) | Weekend runbook |
 | [`docs/vineyard-research.md`](docs/vineyard-research.md) | Open datasets and tools |
+| [`docs/siret3-dataset.md`](docs/siret3-dataset.md) | Official Sireț3 imagery card (area, GSD, sensor, licence) |
 | [`data/challenge/README.md`](data/challenge/README.md) | Pack file index |
 
 Human README: [`README.md`](README.md).
@@ -34,7 +35,8 @@ The Google Drive download is copied to `data/challenge/` (about 1 GB). Tile ZIPs
 | `data/challenge/03_docs/Vineyard_AI_Field_Challenge_description.pdf` | Tasks, submission, rules, judging. |
 | `data/challenge/03_docs/Vineyard_AI_annotation_rules.pdf` | Labels, attributes, and worked cases. Read this before changing the CVAT writer. |
 | `data/challenge/03_docs/Marcaj_quick_start_for_teams.pdf` | Sign in, build and upload ZIPs, publish, correct, submit. |
-| `data/challenge/04_source/siret3_source_orthomosaic_EPSG4326.tif` | Full original orthomosaic, 628 MB, EPSG:4326, as published on OpenAerialMap. Whole-survey training only. Gitignored. |
+| `data/challenge/03_docs/Marcaj_Siret3_Dataset_Brief_EN.pdf` | Organising-committee imagery card: 145 ha, 3.52 cm/px, Mavic 3E, 658.6 MB source. Transcribed in [`docs/siret3-dataset.md`](docs/siret3-dataset.md). |
+| `data/challenge/04_source/siret3_source_orthomosaic_EPSG4326.tif` | Full original orthomosaic, **658.6 MB** (brief), EPSG:4326, as published on OpenAerialMap. Whole-survey training only. Gitignored. |
 | `data/challenge/05_examples/siret3_examples_cvat.zip` | Two example tiles in CVAT for images 1.1 (`annotations.xml` + `images/`). Same format as the upload. Not scored. |
 | `data/challenge/05_examples/preview_siret3_r021_c012.jpg` | Block `V01`: 25 rows, all `regular`, 399 canopies, 24 inter-rows, all `bare_soil`. Young vines on tilled soil, one polygon per plant. |
 | `data/challenge/05_examples/preview_siret3_r006_c004.jpg` | Block `V02`: 26 rows, 5 `disrupted`, 251 canopies, 25 inter-rows (21 `bare_soil`, 4 `mixed`). Grass strips. White vine tubes and stakes are not waste. |
@@ -75,7 +77,7 @@ Example images inside the zip: `siret3_r021_c012.tif`, `siret3_r006_c004.tif`, b
 | `processing/` | `siret3` CLI: inventory, stitch (derive rows/IDs), CVAT 1.1 export, inspect, measurements, closed route. |
 | `models/` | YOLO11m-seg canopy + YOLO12 waste. Train on Riseholme / DroneWaste only. Infer: `models/infer_yolo.py`. |
 | `web/` | Next.js + MapLibre on port 43173. Sample layers are synthetic until the Marcaj export. |
-| `route.geojson`, `measurements.csv` | Sample until rebuilt from the Marcaj export. |
+| `route.geojson`, `route_farmer.geojson`, `measurements.csv` | Inspector (25%) + farmer (waste-only) + jury CSV. Samples until rebuilt from the Marcaj export. |
 | `data/tiles/` | 311 unzipped challenge tiles (local, gitignored). |
 | `models/weights/` | Gitignored. Local `vineyard.pt` (43 MB, copied from H100 25 Sep). `waste.pt` after train. |
 
@@ -93,7 +95,7 @@ Deadline Sunday 27 Sep 2026, 15:00 Europe/Chisinau. Locked stack: public-data tr
 - Five-part CVAT ZIPs, original TIFF names, official enums, hard fail at 90 MB (`cvat11.py`).
 - `siret3 inspect`: gap midpoints `INS-{row_id}-{n}` (not a Marcaj label).
 - `siret3 measurements`: union canopy / inter-row m²+ha, `n_blocks`, `n_rows`, stitched row length.
-- `siret3 route`: closed LineString **EPSG:32635**, official start 629504.70, 5220250.75 ± 5 m, passable = inter-row ∪ passages − forbidden (holes kept), fail if > 2% length illegal. One Feature only (`length_m` + `start_x`/`start_y` properties).
+- `siret3 route`: closed LineString **EPSG:32635**, official start 629504.70, 5220250.75 ± 5 m, passable = inter-row ∪ passages − forbidden (holes kept), fail if > 2% length illegal. One Feature only (`length_m` + `start_x`/`start_y` properties). **26 Sep: two walks required** — inspector `route.geojson` (gaps + waste, `--targets inspections,waste`, the 25% file) and farmer `route_farmer.geojson` (waste only, `--targets waste`).
 - Spec/plan: `docs/superpowers/specs/2026-09-25-closed-route-design.md`, `docs/superpowers/plans/2026-09-25-closed-route.md`.
 
 ### Models / GPU (`ssh gpu-server`, `/home/prodius/projects/bei50`)
@@ -108,30 +110,37 @@ Deadline Sunday 27 Sep 2026, 15:00 Europe/Chisinau. Locked stack: public-data tr
 2. Infer all 311 tiles on the H100 (faster than this Mac): canopy then waste.
 3. `siret3 stitch` + `siret3 cvat-export --parts` → 5 ZIPs ≤ 90 MB. Dry-run part 4 (already 89.75 MiB of TIFFs).
 4. Marcaj: upload all five, confirm 311, **publish once**, correct, **submit every job**.
-5. Rebuild `route.geojson` + `measurements.csv` from the **Marcaj export**, not raw model output.
-6. Web: replace SAMPLE layers; README: weight URL, 311-tile time, hardware.
+5. Rebuild **`route.geojson` (inspector)** + **`route_farmer.geojson` (farmer)** + `measurements.csv` from the **Marcaj export**, not raw model output.
+6. Web: blue inspector + red farmer; replace SAMPLE layers; README: weight URL, 311-tile time, hardware.
 
 Known leftovers (do not block infer): inter-row export is exterior-only (can overlap canopy); `legal_path` uses a 0.35 m pad vs 0.05 m score slop; targets > 2 m from passable are dropped; stitch `--tiles` missing → `bare_soil` not `unassessable`; CLI `--passages`/`--forbidden` have no official-pack default.
 
 ### Commands
 
 ```bash
-# after waste.pt exists on gpu-server
-ssh gpu-server 'cd /home/prodius/projects/bei50 && .venv/bin/python models/infer_yolo.py --weights models/weights/vineyard.pt --tiles data/tiles --out data/predictions'
-ssh gpu-server 'cd /home/prodius/projects/bei50 && .venv/bin/python models/infer_yolo.py --weights models/weights/waste.pt --tiles data/tiles --out data/predictions_waste --conf 0.4'
+# after waste train exits (script refuses if train_yolo detect is still up)
+ssh gpu-server 'bash /home/prodius/projects/bei50/models/remote/infer_311.sh'
 
-siret3 stitch data/predictions/merged.geojson --tiles data/tiles --passages data/challenge/02_route/passages.geojson --out data/stitched.geojson
+siret3 project data/predictions data/predictions_waste --tiles data/tiles --out data/predictions_32635.geojson
+siret3 stitch data/predictions_32635.geojson --tiles data/tiles --passages data/challenge/02_route/passages.geojson --out data/stitched.geojson
 siret3 cvat-export data/tiles --shapes data/stitched.geojson --parts data/challenge/01_tiles --out-dir data/cvat_zips
 siret3 inspect data/stitched.geojson --out inspections.geojson
 siret3 measurements data/stitched.geojson --out measurements.csv
-siret3 route data/stitched.geojson \
+siret3 route data/stitched.geojson --targets inspections,waste \
   --start-file data/challenge/02_route/start.geojson \
   --passages data/challenge/02_route/passages.geojson \
   --forbidden data/challenge/02_route/forbidden.geojson \
   --out route.geojson
+siret3 route data/stitched.geojson --targets waste \
+  --start-file data/challenge/02_route/start.geojson \
+  --passages data/challenge/02_route/passages.geojson \
+  --forbidden data/challenge/02_route/forbidden.geojson \
+  --out route_farmer.geojson
 ```
 
-Infer writes per-tile GeoJSON in **pixel** space. Project with `georef.pixels_to_xy` and merge into one FeatureCollection before `siret3 stitch` (that glue is not a CLI command yet).
+`siret3 project` turns per-tile pixel GeoJSON into one EPSG:32635 FeatureCollection (one affine open per tile). CVAT part ZIPs store GeoTIFFs uncompressed (`ZIP_STORED`) and deflate XML only. Empty-shape dry-run (26 Sep): part1 89.479 MiB, part2 89.289, part3 88.892, part4 **89.751**, part5 9.933 — all under 90 MiB (94,371,840). Re-export after stitch so XML has real shapes; part 4 has ~0.25 MiB headroom.
+
+Marcaj (human): upload the five ZIPs from `data/cvat_zips/`, confirm 311 files, publish once, correct, submit every job. Agents cannot click Marcaj.
 
 ## Do not
 

@@ -12,5 +12,6 @@ Start here if you need the challenge without opening the PDFs.
 | [must-implement.md](must-implement.md) | What this repo still has to implement, mapped to scores |
 | [vineyard-plan.md](vineyard-plan.md) | Friday–Sunday runbook |
 | [vineyard-research.md](vineyard-research.md) | Open datasets, models, GIS, CVAT notes |
+| [siret3-dataset.md](siret3-dataset.md) | Official imagery card (145 ha, GSD, Mavic 3E, licence) |
 
 Official PDFs (win on conflict): `data/challenge/03_docs/`. Pack inventory: `data/challenge/README.md`. Agent orientation: `AGENTS.md`.

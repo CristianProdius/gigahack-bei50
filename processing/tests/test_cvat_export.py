@@ -65,6 +65,8 @@ def test_build_team_upload_zip_copies_original_names(tmp_path: Path):
         names = set(zf.namelist())
         assert names == {"annotations.xml", "images/siret3_r001_c001.tif"}
         assert zf.read("images/siret3_r001_c001.tif") == b"TIFF"
+        assert zf.getinfo("images/siret3_r001_c001.tif").compress_type == zipfile.ZIP_STORED
+        assert zf.getinfo("annotations.xml").compress_type == zipfile.ZIP_DEFLATED
 
 
 def test_build_part_zips_follows_membership(tmp_path: Path):

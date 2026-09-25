@@ -11,28 +11,27 @@
         "length_m": 412.0,
         "crs_measured": "EPSG:32635",
         "start_tolerance_m": 5,
+        "role": "inspector",
         "sample": true,
         "note": "Synthetic walk near the Siret3 bbox. Replace after Marcaj export."
       },
       "geometry": {
         "type": "LineString",
         "coordinates": [
-          [28.71080, 47.12140],
-          [28.71140, 47.12140],
-          [28.71140, 47.12210],
-          [28.71220, 47.12210],
-          [28.71220, 47.12270],
-          [28.71120, 47.12270],
-          [28.71120, 47.12210],
-          [28.71080, 47.12210],
-          [28.71080, 47.12140]
+          [28.7073776, 47.1230335],
+          [28.70820, 47.1230335],
+          [28.70820, 47.12240],
+          [28.70910, 47.12240],
+          [28.70910, 47.12320],
+          [28.7073776, 47.12320],
+          [28.7073776, 47.1230335]
         ]
       }
     },
     {
       "type": "Feature",
       "properties": { "kind": "start", "sample": true },
-      "geometry": { "type": "Point", "coordinates": [28.71080, 47.12140] }
+      "geometry": { "type": "Point", "coordinates": [28.7073776, 47.1230335] }
     }
   ]
 }

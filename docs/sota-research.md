@@ -33,7 +33,7 @@ flowchart LR
 | Row prior | feeds 8% axes | GRowSeg zero-shot (SegFormer-B5, MIT) | Nadir row mask, no train |
 | Polish | canopy F1 | SAM2 **box** prompts on hard / touching canopies | SAM3 **text** is weak on overhead RS |
 | Rows / IDs / inter-rows / cover / gaps | 15% + 10% + route targets | GIS: `ids.py`, LCAS helpers, 5 m gap rule, ExG | Matches Marcaj geometry rules |
-| Route | 25% | Inter-row ∪ passages − forbidden; visit waste + gap midpoints | Coverage first (2 m), then shorten |
+| Route | 25% on inspector file | Two walks: inspector (gaps + waste) + farmer (waste only). Same legal graph | Coverage first (2 m) on `route.geojson`, then shorten |
 
 **Default train:** YOLO11m-seg (Riseholme used YOLOv11). Infer 2048×2048 tiles at imgsz 1280. Split fused canopies at 1.0–1.5 m along the row. Empty-tile gate: if GRowSeg finds no row, emit **zero** canopies (false-canopy penalty).
 

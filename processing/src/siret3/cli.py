@@ -10,9 +10,16 @@ from . import EXPECTED_TILE_COUNT, START_TOLERANCE_M, WORK_CRS
 from .cvat11 import CvatImage, build_part_zips, build_team_upload_zip, render_annotations
 from .derive import derive_from_canopies, images_from_projected
 from .ids import ProjectedPoly
+from .project import write_projected
 from .measurements import write_csv
 from .route import closed_walk, write_route_geojson
 from .tiles import inventory, write_index
+
+
+def _cmd_project(args: argparse.Namespace) -> int:
+    fc = write_projected([Path(p) for p in args.inputs], Path(args.tiles), Path(args.out))
+    print(f"projected {len(fc['features'])} features -> {args.out}")
+    return 0
 
 
 def _cmd_inventory(args: argparse.Namespace) -> int:
@@ -191,7 +198,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 def _cmd_route(args: argparse.Namespace) -> int:
     from .crs import to_work_xy
     from .ids import centroid
-    from .inspect import inspections_from_canopies, waste_targets
+    from .inspect import parse_targets, select_waypoints
     from .route import load_official_start, passable_from_items
 
     if args.start:
@@ -211,8 +218,8 @@ def _cmd_route(args: argparse.Namespace) -> int:
     inter = [p.coords for p in items if p.kind == "interrow_area"]
     passages = [p.coords for p in items if p.kind == "passage"]
     forbidden = [p.coords for p in items if p.kind == "forbidden"]
-    ins = inspections_from_canopies(items)
-    waypoints = [centroid(p.coords) for p in ins] + waste_targets(items)
+    wanted = parse_targets(getattr(args, "targets", "inspections,waste"))
+    waypoints = select_waypoints(items, wanted)
     if not waypoints:
         waypoints = [
             centroid(p.coords)
@@ -231,8 +238,9 @@ def _cmd_route(args: argparse.Namespace) -> int:
         require_legal=True,
         passable=passable_from_items(items),
     )
-    write_route_geojson(tour, Path(args.out), start=start)
-    print(f"closed walk {len(tour)} vertices -> {args.out}")
+    role = "farmer" if wanted == {"waste"} else "inspector"
+    write_route_geojson(tour, Path(args.out), start=start, role=role)
+    print(f"closed walk {len(tour)} vertices role={role} -> {args.out}")
     return 0
 
 
@@ -245,6 +253,12 @@ def main(argv: list[str] | None = None) -> int:
     inv.add_argument("--out", default="data/tile_index.csv")
     inv.add_argument("--allow-partial", action="store_true")
     inv.set_defaults(func=_cmd_inventory)
+
+    pj = sub.add_parser("project", help="Pixel infer GeoJSON → one EPSG:32635 FeatureCollection")
+    pj.add_argument("inputs", nargs="+", help="GeoJSON files or directories")
+    pj.add_argument("--tiles", default="data/tiles")
+    pj.add_argument("--out", default="data/predictions_32635.geojson")
+    pj.set_defaults(func=_cmd_project)
 
     st = sub.add_parser("stitch", help="Derive rows, inter-rows, and IDs from canopy polygons")
     st.add_argument("predictions")
@@ -283,6 +297,11 @@ def main(argv: list[str] | None = None) -> int:
     rt.add_argument("--forbidden", default=None)
     rt.add_argument("--tolerance", type=float, default=START_TOLERANCE_M)
     rt.add_argument("--out", default="route.geojson")
+    rt.add_argument(
+        "--targets",
+        default="inspections,waste",
+        help="comma list: inspections,waste (inspector) or waste (farmer)",
+    )
     rt.set_defaults(func=_cmd_route)
 
     args = p.parse_args(argv)

@@ -322,6 +322,7 @@ def write_route_geojson(
     out_path: Path,
     *,
     start: tuple[float, float] | None = None,
+    role: str = "inspector",
 ) -> None:
     """Write one LineString in EPSG:32635 with planar length_m."""
     length = 0.0
@@ -343,6 +344,7 @@ def write_route_geojson(
                     "start_tolerance_m": START_TOLERANCE_M,
                     "start_x": float(start_xy[0]),
                     "start_y": float(start_xy[1]),
+                    "role": role,
                 },
                 "geometry": {
                     "type": "LineString",

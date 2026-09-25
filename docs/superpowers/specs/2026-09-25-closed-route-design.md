@@ -26,6 +26,8 @@ The 25% walking-route slice is zero if the file is illegal or not closed. The re
 
 **Writer.** `write_route_geojson` emits a FeatureCollection CRS EPSG:32635, one LineString, `length_m`. No lon/lat.
 
+**Two walks (26 Sep).** Inspector file `route.geojson` uses inspection + waste targets (25% score). Farmer file `route_farmer.geojson` uses waste only. Same writer, same legal/closed rules. Do not merge both LineStrings into one FeatureCollection.
+
 **Inspections.** For each row, sort plants of that `row_id` along the row heading. Any consecutive gap ≥ 5 m → point at the midpoint, `id` = `INS-{row_id}-{n}`, plus `vineyard_id` / `row_id`. Waste centroids are route targets but stay `kind=waste`.
 
 **Measurements.** Keep per-feature rows. Add summary rows: `n_blocks`, `n_rows`, canopy union m²/ha, inter-row union m²/ha, total stitched row length.
