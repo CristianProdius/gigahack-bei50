@@ -1,0 +1,5 @@
+kind,id,vineyard_id,area_m2,length_m,n_parts,tile_names,sample
+vineyard,V-0001,V-0001,1840.000,,2,siret3_r001_c001.tif,true
+row,R-V-0001-01,V-0001,,86.400,2,siret3_r001_c001.tif,true
+interrow_area,V-0001,V-0001,620.000,,1,siret3_r001_c001.tif,true
+waste,,V-0001,4.200,,1,siret3_r001_c003.tif,true
