@@ -10,7 +10,7 @@ export default function Home() {
             <h1 className="text-xl font-semibold text-stone-900 sm:text-2xl">Sireț3 vineyard map</h1>
           </div>
           <p className="max-w-xl text-sm text-stone-600">
-            Canopy, rows, inter-rows, waste, and a closed inspection walk. Measurements are planar EPSG:32635. Deadline Sunday 27 Sep 2026, 15:00 Chișinău.
+            Canopy, rows, inter-rows, waste, inspector walk (blue) and farmer waste walk (red). Measurements are planar EPSG:32635. Deadline Sunday 27 Sep 2026, 15:00 Chișinău.
           </p>
         </div>
       </header>

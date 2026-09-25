@@ -40,7 +40,7 @@ Weights stay on disk under `models/weights/` (gitignored). README links the publ
 
 ### 0. Repo and research (this commit)
 
-Docs, Python spatial package, YOLO/SAM stubs, MapLibre scaffold, sample `route.geojson` / `measurements.csv`. Public GitHub: `gigahack-bei50`.
+Docs, Python spatial package, YOLO/SAM stubs, MapLibre scaffold, sample `route.geojson` / `route_farmer.geojson` / `measurements.csv`. Public GitHub: `gigahack-bei50`.
 
 ### 1. Friday night / Saturday morning — models
 
@@ -74,12 +74,12 @@ From the **published Marcaj export**, not from raw model output:
 2. Build passable graph from inter-row + authorised passages, subtract forbidden zones.
 3. Snap official start (≤ 5 m) or fail loud.
 4. Closed walk via NetworkX TSP-on-shortest-paths, OR-Tools if the waypoint count blows up.
-5. Write `route.geojson` (LineString, start = end).
+5. Write `route.geojson` (inspector: gaps + waste) and `route_farmer.geojson` (farmer: waste only). Both LineString, start = end.
 
 ### 4. Sunday — web UI and freeze
 
 1. Point the MapLibre app at OAM XYZ for Sireț3 plus the GeoJSON layers.
-2. Show vineyard IDs, row lengths, areas, waste boxes, route, start marker.
+2. Show vineyard IDs, row lengths, areas, waste boxes, **both** routes (inspector blue, farmer red), start marker.
 3. Empty / loading / error states already in the scaffold. Wire real files when they exist.
 4. README: repro commands, weight URL, H100 vs 16 GB wall times, attribution (3DATA COLLECT, CC BY 4.0; Riseholme; DroneWaste).
 5. Stop changing labels after the last Marcaj export we measure.
@@ -138,7 +138,7 @@ Sample data in the repo is **synthetic near the Sireț3 bbox**, labelled SAMPLE.
 | --- | --- |
 | Fri EOD | Weights training or GRowSeg dry-run visible; 3-tile XML validates |
 | Sat 18:00 | All five parts imported (311 files) and published |
-| Sun 12:00 | `measurements.csv` + `route.geojson` + map screenshot |
+| Sun 12:00 | `measurements.csv` + both routes + map screenshot |
 | Sun 15:00 | Freeze |
 
 If Saturday publish slips, skip GRowSeg polish and SAM. The import is the gate.

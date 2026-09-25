@@ -27,7 +27,8 @@ processing/           rasterio / geopandas / shapely / NetworkX pipeline
 models/               YOLO11 + SAM/SAM2/MobileSAM stubs
 web/                  Next.js + MapLibre (port 43173)
 data/tiles/           unzip the 311 siret3_rXXX_cYYY.tif here before inventory
-route.geojson         closed walk (sample until Marcaj export)
+route.geojson         inspector walk: gaps + waste (25% file; sample until Marcaj export)
+route_farmer.geojson  farmer walk: waste only (required; generate with the inspector file)
 measurements.csv      planar m / m² (sample until Marcaj export)
 ```
 
@@ -117,12 +118,13 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
 
    ```bash
    siret3 measurements data/stitched.geojson --out measurements.csv
-   siret3 route data/stitched.geojson --start 28.7073776,47.1230335 --out route.geojson
+   siret3 route data/stitched.geojson --targets inspections,waste --out route.geojson
+   siret3 route data/stitched.geojson --targets waste --out route_farmer.geojson
    ```
 
-   Start must snap within 5 m. Walk uses inter-row + authorised passages only.
+   Start must snap within 5 m. Both walks use inter-row + authorised passages only. Inspector = 25% file. Farmer = waste collect.
 
-5. **Web UI.** Refresh the map. Replace `web/public/layers/sample.geojson` and root `route.geojson` with the real export.
+5. **Web UI.** Refresh the map. Replace SAMPLE layers. Show inspector (blue) and farmer (red) with each `length_m`.
 
 ## Sireț3 imagery
 

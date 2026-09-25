@@ -19,6 +19,11 @@ npm-debug.log*
 # Data and weights (keep placeholders)
 data/tiles/*.tif
 data/tiles/*.tiff
+data/cvat_zips/
+data/predictions/
+data/predictions_waste/
+data/predictions_32635.geojson
+data/stitched.geojson
 models/weights/
 # Official pack rasters stay on disk (~1 GB). Docs, GeoJSON, PDFs, and previews stay tracked.
 data/challenge/01_tiles/*.zip

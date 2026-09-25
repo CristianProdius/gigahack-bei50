@@ -181,8 +181,8 @@ def build_team_upload_zip(
     out_zip = Path(out_zip)
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     tiles_dir = Path(tiles_dir)
-    with zipfile.ZipFile(out_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("annotations.xml", xml)
+    with zipfile.ZipFile(out_zip, "w") as zf:
+        zf.writestr("annotations.xml", xml, compress_type=zipfile.ZIP_DEFLATED)
         for image in images:
             src = tiles_dir / image.name
             if not src.is_file():
@@ -190,7 +190,7 @@ def build_team_upload_zip(
                     f"Refusing zip: missing original tile {src}. "
                     "Import needs all 311 unchanged GeoTIFFs."
                 )
-            zf.write(src, arcname=f"images/{image.name}")
+            zf.write(src, arcname=f"images/{image.name}", compress_type=zipfile.ZIP_STORED)
     return out_zip
 
 

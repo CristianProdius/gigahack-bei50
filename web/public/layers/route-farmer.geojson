@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "name": "SAMPLE_route_farmer_not_marcaj",
+  "crs": { "type": "name", "properties": { "name": "EPSG:4326" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "route",
+        "closed": true,
+        "length_m": 286.0,
+        "crs_measured": "EPSG:32635",
+        "role": "farmer",
+        "sample": true,
+        "note": "Synthetic waste-only walk. Replace after Marcaj export."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [28.7073776, 47.1230335],
+          [28.70820, 47.1230335],
+          [28.70820, 47.12250],
+          [28.7073776, 47.12250],
+          [28.7073776, 47.1230335]
+        ]
+      }
+    }
+  ]
+}

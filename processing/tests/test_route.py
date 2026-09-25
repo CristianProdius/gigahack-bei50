@@ -107,6 +107,15 @@ def test_write_route_geojson_is_32635(tmp_path: Path):
     assert {f["geometry"]["type"] for f in data["features"]} == {"LineString"}
 
 
+def test_write_route_geojson_role_farmer(tmp_path: Path):
+    out = tmp_path / "route_farmer.geojson"
+    coords = [OFFICIAL_START, (OFFICIAL_START[0] + 10, OFFICIAL_START[1]), OFFICIAL_START]
+    write_route_geojson(coords, out, start=OFFICIAL_START, role="farmer")
+    data = json.loads(out.read_text())
+    assert len(data["features"]) == 1
+    assert data["features"][0]["properties"]["role"] == "farmer"
+
+
 def test_closed_walk_rejects_illegal_when_required():
     left = [(0, 0), (4, 0), (4, 2), (0, 2)]
     right = [(20, 0), (24, 0), (24, 2), (20, 2)]

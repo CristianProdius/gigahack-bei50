@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use executing-plans. TDD on every function.
 
-**Goal:** Legal closed `route.geojson` in EPSG:32635, inspections from 5 m gaps, jury measurement unions.
+**Goal:** Legal closed `route.geojson` (inspector) and `route_farmer.geojson` (farmer) in EPSG:32635, inspections from 5 m gaps, jury measurement unions. 25% score uses the inspector file only.
 
 **Architecture:** Shapely passable union + networkx legal hops. CLI `inspect` / `route` / `measurements` read GeoJSON already used by stitch.
 

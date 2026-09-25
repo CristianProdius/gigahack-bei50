@@ -77,7 +77,7 @@ The verbal session used “Markaz” / “Syret” / “trees.” The scored pro
 | Semantic segmentation of “trees” | **Instance** `vineyard` polygons, **one plant** | Instance seg. A row blob kills canopy F1 |
 | Start withheld until the end | Start is in [`data/challenge/02_route/start.geojson`](../data/challenge/02_route/start.geojson) (629504.70, 5220250.75) | Use that point. UI may still let a juror type another start |
 | ~1 m route precision | A target is visited if the route is within **2 m**. Start snap **5 m** | Design for 2 m / 5 m |
-| Targets = “middle trees of rows” + waste | Hidden inspection locations **and** waste. Our inspect points = gaps / missing planting | Visit waste + gap midpoints. Do **not** add a Marcaj “tree” or “inspect” label |
+| Targets = “middle trees of rows” + waste | Hidden inspection locations **and** waste. Our inspect points = gaps / missing planting | **Inspector** `route.geojson` visits waste + gap midpoints (the 25% file). **Farmer** `route_farmer.geojson` visits waste only. Do **not** add a Marcaj “tree” or “inspect” label |
 | Dead trees reachable from both sides; waste one-way | Not in the PDF | Useful **routing** hint: approach gaps from either adjacent inter-row; waste only from the passable side |
 | Live model demo | Engineering 15% + 5+5 min pitch | Keep a 3-tile infer path that runs on the laptop |
 | API-served models allowed | Yes if listed in the README | Default stays **local** weights (reproducible, cheaper) |
@@ -85,7 +85,8 @@ The verbal session used “Markaz” / “Syret” / “trees.” The scored pro
 | Six sub-solutions | 25 + 10 + 15 + 10 + 25 + 15 = 100 | See [`scoring.md`](scoring.md) |
 | ~3 cm/px | Challenge tiles are **2.5 cm/px** (0.025 m); source ortho ~3.52 cm/px | Inventory reads the GeoTIFF; do not assume 3 cm |
 | “Per-tree IDs” | `vineyard_id` on every object; `row_id` on rows. Canopy count is instance F1, not a tree-ID attribute | Do not invent `tree_id` in Marcaj |
-| Platform export is the submission | Annotations are **exported by organizers** from Marcaj at 15:00. Repo must contain `route.geojson`, `measurements.csv`, README, code | We still export for measurements and the map |
+| Platform export is the submission | Annotations are **exported by organizers** from Marcaj at 15:00. Repo must contain `route.geojson`, `route_farmer.geojson`, `measurements.csv`, README, code | We still export for measurements and the map |
+| One walking route | **26 Sep: two walks** (inspector + farmer) | Inspector = scored 25%. Farmer = required second file + red web layer |
 
 ---
 
@@ -95,7 +96,7 @@ The verbal session used “Markaz” / “Syret” / “trees.” The scored pro
 - **Prize:** MDL 30,000, one team. Subsidy story in the PDF: MDL 52,000–80,000 / ha maintenance; 20 ha → MDL 1.04–1.60 million / year. Route example: 6 km → 4.2 km = 27 min at 4 km/h.
 - **Compute:** none provided. Own laptop or cloud. No model-size limit. Weights may be a link.
 - **Support:** GigaHack Slack challenge channel, Marcaj 09:00–23:00. Coach on Telegram for team leaders.
-- **Pitch:** 5 min + 5 min questions. Show the working web interface (map, objects, IDs, measurements, route). Laptop demo accepted; deployed URL goes in the README.
+- **Pitch:** 5 min + 5 min questions. Show the working web interface (map, objects, IDs, measurements, **both** routes). Laptop demo accepted; deployed URL goes in the README.
 - **Admission:** working UI, published Marcaj with submitted jobs, correct formats and georeferencing.
 
 ## How this file is used
