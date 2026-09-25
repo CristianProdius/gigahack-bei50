@@ -1,0 +1,19 @@
+[project]
+name = "siret3"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["rasterio", "geopandas", "shapely", "networkx", "click"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+route-ortools = ["ortools"]
+
+[project.scripts]
+siret3 = "siret3.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
