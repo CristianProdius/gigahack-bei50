@@ -1,0 +1,14 @@
+{
+  "type": "FeatureCollection",
+  "name": "SAMPLE_route_not_marcaj",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"kind": "route", "closed": true, "sample": true},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[28.71080,47.12140],[28.71140,47.12140],[28.71140,47.12210],[28.71080,47.12210],[28.71080,47.12140]]
+      }
+    }
+  ]
+}
