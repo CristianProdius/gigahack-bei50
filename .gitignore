@@ -19,7 +19,12 @@ npm-debug.log*
 # Data and weights (keep placeholders)
 data/tiles/*.tif
 data/tiles/*.tiff
+data/source/
+data/predictions/
+data/stitched.geojson
+datasets/
 models/weights/
+models/runs/
 *.pt
 *.pth
 *.onnx
