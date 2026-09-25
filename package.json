@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node -e \"console.warn('\\nSTOP: orphan frontend branch. DEMO SVG only. Do not merge into main. Real app: web/ on main :43173\\n')\" && next dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"

@@ -1,3 +1,12 @@
+# STOP — orphan frontend branch
+
+This branch is **not** the scored GigaHack repo. Unrelated history. SVG DEMO on :3000.
+
+- Do **not** merge into `main`.
+- Do **not** draw Sireț3 labels here (Marcaj only).
+- Real UI: `web/` on `main`, port 43173.
+- Details: [`STOP.md`](STOP.md).
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
