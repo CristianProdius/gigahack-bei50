@@ -75,7 +75,11 @@ def parse_targets(raw: str) -> set[str]:
 def select_waypoints(items: list[ProjectedPoly], targets: set[str]) -> list[tuple[float, float]]:
     pts: list[tuple[float, float]] = []
     if "inspections" in targets:
-        pts.extend(centroid(p.coords) for p in inspections_from_canopies(items) if p.coords)
+        existing = [centroid(p.coords) for p in items if p.kind == "inspection" and p.coords]
+        if existing:
+            pts.extend(existing)
+        else:
+            pts.extend(centroid(p.coords) for p in inspections_from_canopies(items) if p.coords)
     if "waste" in targets:
         pts.extend(waste_targets(items))
     return pts

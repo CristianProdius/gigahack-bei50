@@ -14,6 +14,7 @@ from .ids import centroid
 OFFICIAL_START = (629504.70, 5220250.75)
 VISIT_M = 2.0
 ILLEGAL_MAX = 0.02
+PATH_PAD_M = 0.05  # match the score slop so hops cannot ride a fatter pad
 
 
 def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -31,7 +32,10 @@ def _as_poly(
         poly = poly.buffer(0)
     if poly.is_empty:
         return None
-    return poly
+    simple = poly.simplify(0.4, preserve_topology=True)
+    if simple.is_empty or simple.geom_type not in {"Polygon", "MultiPolygon"}:
+        return poly
+    return simple
 
 
 def _as_ring(ring: list[tuple[float, float]]) -> Polygon | None:
@@ -172,17 +176,70 @@ def _graph_nodes(passable) -> list[tuple[float, float]]:
         if hasattr(geom, "interiors"):
             rings.extend(geom.interiors)
         for line in rings:
-            n = max(int(line.length / 2.0), 4)
+            n = max(int(line.length / 6.0), 4)
             for i in range(n):
                 p = line.interpolate(i / n, normalized=True)
                 nodes.append((float(p.x), float(p.y)))
     return nodes
 
 
+def _uniq_nodes(nodes: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    uniq: list[tuple[float, float]] = []
+    seen: set[tuple[float, float]] = set()
+    for n in nodes:
+        key = (round(n[0], 2), round(n[1], 2))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append((float(n[0]), float(n[1])))
+    return uniq
+
+
+def _legal_graph(passable):
+    """Build the passable corridor graph once (nodes within 40 m, legal hops)."""
+    import networkx as nx
+    from shapely.strtree import STRtree
+
+    padded = passable.buffer(PATH_PAD_M)
+    uniq = _uniq_nodes(_graph_nodes(passable))
+    g = nx.Graph()
+    g.add_nodes_from(uniq)
+    if not uniq:
+        return g, padded
+    geoms = [Point(p) for p in uniq]
+    tree = STRtree(geoms)
+    for i, p in enumerate(uniq):
+        hits = tree.query(geoms[i].buffer(40.0))
+        for j in hits:
+            j = int(j)
+            q = uniq[j]
+            if q <= p:
+                continue
+            hop = LineString([p, q])
+            if hop.length <= 40 and padded.covers(hop):
+                g.add_edge(p, q, weight=hop.length)
+    return g, padded
+
+
+def _attach(g, pt, padded) -> None:
+    if pt in g:
+        return
+    g.add_node(pt)
+    for q in sorted(g.nodes, key=lambda n: _dist(pt, n))[:24]:
+        if q == pt:
+            continue
+        hop = LineString([pt, q])
+        if hop.length <= 40 and padded.covers(hop):
+            g.add_edge(pt, q, weight=hop.length)
+
+
 def legal_path(
     a: tuple[float, float],
     b: tuple[float, float],
     passable,
+    *,
+    graph=None,
+    padded=None,
 ) -> list[tuple[float, float]]:
     if a == b:
         return [a]
@@ -192,34 +249,20 @@ def legal_path(
         a = _project_onto_passable(a, passable)
     if Point(b).distance(passable) <= VISIT_M:
         b = _project_onto_passable(b, passable)
-    padded = passable.buffer(0.35)
+    if padded is None:
+        padded = passable.buffer(PATH_PAD_M)
     seg = LineString([a, b])
     if padded.covers(seg):
         return [a, b]
     import networkx as nx
 
-    nodes = [a, b] + _graph_nodes(passable)
-    # unique-ish
-    uniq: list[tuple[float, float]] = []
-    seen = set()
-    for n in nodes:
-        key = (round(n[0], 2), round(n[1], 2))
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append((float(n[0]), float(n[1])))
-    g = nx.Graph()
-    g.add_nodes_from(uniq)
-    for i, p in enumerate(uniq):
-        for q in uniq[i + 1 :]:
-            hop = LineString([p, q])
-            if hop.length > 40:
-                continue
-            if padded.covers(hop):
-                g.add_edge(p, q, weight=hop.length)
-    if a not in g or b not in g or not nx.has_path(g, a, b):
+    if graph is None:
+        graph, padded = _legal_graph(passable)
+    _attach(graph, a, padded)
+    _attach(graph, b, padded)
+    if a not in graph or b not in graph or not nx.has_path(graph, a, b):
         raise ValueError("no legal path on passable inter-row ∪ passages")
-    return [(float(x), float(y)) for x, y in nx.shortest_path(g, a, b, weight="weight")]
+    return [(float(x), float(y)) for x, y in nx.shortest_path(graph, a, b, weight="weight")]
 
 
 def _project_onto_passable(pt: tuple[float, float], passable) -> tuple[float, float]:
@@ -230,6 +273,21 @@ def _project_onto_passable(pt: tuple[float, float], passable) -> tuple[float, fl
 
     snapped = nearest_points(p, passable)[1]
     return (float(snapped.x), float(snapped.y))
+
+
+def snap_walk(coords: list[tuple[float, float]], passable, *, step_m: float = 1.0) -> list[tuple[float, float]]:
+    """Densify hops and project each vertex onto passable so chords cannot skim the pad."""
+    if len(coords) < 2 or passable is None or passable.is_empty:
+        return list(coords)
+    out: list[tuple[float, float]] = []
+    for a, b in zip(coords, coords[1:]):
+        line = LineString([a, b])
+        n = max(int(line.length / step_m), 1)
+        for i in range(n):
+            p = line.interpolate(i / n, normalized=True)
+            out.append(_project_onto_passable((float(p.x), float(p.y)), passable))
+    out.append(_project_onto_passable(coords[-1], passable))
+    return out
 
 
 def closed_walk(
@@ -299,16 +357,35 @@ def closed_walk(
         ordered = _nearest_neighbor_tour(kept, depot)
 
     if passable is not None and not passable.is_empty:
-        stitched: list[tuple[float, float]] = []
-        for a, b in zip(ordered, ordered[1:]):
-            hop = legal_path(a, b, passable)
-            if stitched and hop and hop[0] == stitched[-1]:
+        graph, padded = _legal_graph(passable)
+        stitched: list[tuple[float, float]] = [ordered[0]]
+        cur = ordered[0]
+        reached = 0
+        for b in ordered[1:]:
+            if b == cur:
+                continue
+            try:
+                hop = legal_path(cur, b, passable, graph=graph, padded=padded)
+            except ValueError:
+                continue
+            if hop and hop[0] == stitched[-1]:
                 stitched.extend(hop[1:])
             else:
                 stitched.extend(hop)
-        if stitched and stitched[0] != stitched[-1]:
-            stitched.append(stitched[0])
-        ordered = stitched or ordered
+            cur = b
+            reached += 1
+        if stitched[0] != stitched[-1]:
+            try:
+                hop = legal_path(stitched[-1], stitched[0], passable, graph=graph, padded=padded)
+                if hop and hop[0] == stitched[-1]:
+                    stitched.extend(hop[1:])
+                elif hop:
+                    stitched.extend(hop)
+            except ValueError:
+                stitched.append(stitched[0])
+        if require_legal and reached == 0:
+            raise ValueError("no legal path on passable inter-row ∪ passages")
+        ordered = snap_walk(stitched or ordered, passable)
         frac = illegal_length_fraction(ordered, passable)
         if require_legal and frac > ILLEGAL_MAX:
             raise ValueError(

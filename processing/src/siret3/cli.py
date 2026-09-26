@@ -11,13 +11,20 @@ from .cvat11 import CvatImage, build_part_zips, build_team_upload_zip, render_an
 from .derive import derive_from_canopies, images_from_projected
 from .ids import ProjectedPoly
 from .project import write_projected
+from .marcaj import collect_cvat_images, dump_projected_geojson, projected_from_cvat, write_web_layers
 from .measurements import write_csv
 from .route import closed_walk, write_route_geojson
 from .tiles import inventory, write_index
 
 
 def _cmd_project(args: argparse.Namespace) -> int:
-    fc = write_projected([Path(p) for p in args.inputs], Path(args.tiles), Path(args.out))
+    fc = write_projected(
+        [Path(p) for p in args.inputs],
+        Path(args.tiles),
+        Path(args.out),
+        min_plants=args.min_plants,
+        nms_m=args.nms_m,
+    )
     print(f"projected {len(fc['features'])} features -> {args.out}")
     return 0
 
@@ -29,33 +36,33 @@ def _cmd_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+def _xy_pairs(seq) -> list[tuple[float, float]]:
+    return [(float(x), float(y)) for x, y in seq]
+
+
 def _rings_from_geometry(geom: dict) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """Return (exterior, holes) for each polygon, or a single ring with no holes."""
-    from shapely.geometry import shape
-
     gtype = geom.get("type")
-    if gtype in {"Polygon", "MultiPolygon"}:
-        g = shape(geom)
-        polys = list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
-        out = []
-        for poly in polys:
-            if poly.is_empty:
-                continue
-            exterior = [(float(x), float(y)) for x, y in poly.exterior.coords]
-            holes = [[(float(x), float(y)) for x, y in ring.coords] for ring in poly.interiors]
-            out.append((exterior, holes))
-        return out
     coords = geom.get("coordinates") or []
+    if gtype == "Polygon" and coords:
+        return [(_xy_pairs(coords[0]), [_xy_pairs(r) for r in coords[1:]])]
+    if gtype == "MultiPolygon":
+        out = []
+        for poly in coords:
+            if not poly:
+                continue
+            out.append((_xy_pairs(poly[0]), [_xy_pairs(r) for r in poly[1:]]))
+        return out
     if gtype == "LineString":
-        return [([(float(x), float(y)) for x, y in coords], [])]
+        return [(_xy_pairs(coords), [])]
     if gtype == "MultiLineString":
-        return [([(float(x), float(y)) for x, y in line], []) for line in coords]
+        return [(_xy_pairs(line), []) for line in coords]
     if gtype == "Point":
         return [([(float(coords[0]), float(coords[1]))], [])]
     if coords and isinstance(coords[0], (int, float)):
         return [([(float(coords[0]), float(coords[1]))], [])]
     if coords and isinstance(coords[0][0], (int, float)):
-        return [([(float(a), float(b)) for a, b in coords], [])]
+        return [(_xy_pairs(coords), [])]
     return []
 
 
@@ -72,7 +79,11 @@ def _load_projected(path: Path) -> list[ProjectedPoly]:
         for ring, holes in parsed:
             if not ring:
                 continue
-            extras = {"holes": holes} if holes else None
+            extras: dict = {}
+            if holes:
+                extras["holes"] = holes
+            if props.get("label"):
+                extras["label"] = props["label"]
             items.append(
                 ProjectedPoly(
                     kind=kind,
@@ -82,45 +93,14 @@ def _load_projected(path: Path) -> list[ProjectedPoly]:
                     row_id=props.get("row_id"),
                     row_structure=props.get("row_structure"),
                     interrow_cover=props.get("interrow_cover"),
-                    extras=extras,
+                    extras=extras or None,
                 )
             )
     return items
 
 
 def _dump_geojson(items: list[ProjectedPoly], out: Path) -> None:
-    features = []
-    for p in items:
-        if p.kind == "inspection" or (p.kind != "row" and len(p.coords) == 1):
-            geom = {"type": "Point", "coordinates": list(p.coords[0])}
-        elif p.kind == "row":
-            geom = {"type": "LineString", "coordinates": p.coords}
-        elif p.kind == "waste" and len(p.coords) >= 2:
-            geom = {"type": "LineString", "coordinates": p.coords}
-        else:
-            ring = p.coords if p.coords and p.coords[0] == p.coords[-1] else list(p.coords) + (
-                [p.coords[0]] if p.coords else []
-            )
-            geom = {"type": "Polygon", "coordinates": [ring]}
-        features.append(
-            {
-                "type": "Feature",
-                "properties": {
-                    "kind": p.kind,
-                    "vineyard_id": p.vineyard_id,
-                    "row_id": p.row_id,
-                    "row_structure": p.row_structure,
-                    "interrow_cover": p.interrow_cover,
-                    "tile": p.tile,
-                    "id": (p.extras or {}).get("id"),
-                    "extras": p.extras,
-                },
-                "geometry": geom,
-            }
-        )
-    out = Path(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"type": "FeatureCollection", "features": features}, indent=2), encoding="utf-8")
+    dump_projected_geojson(items, Path(out))
 
 
 def _cmd_stitch(args: argparse.Namespace) -> int:
@@ -131,7 +111,13 @@ def _cmd_stitch(args: argparse.Namespace) -> int:
         for p in _load_projected(Path(args.passages)):
             holes = (p.extras or {}).get("holes") or []
             passages.append((p.coords, holes) if holes else p.coords)
-    items = derive_from_canopies(items, tiles_dir=Path(args.tiles) if args.tiles else None, passages=passages)
+    items = derive_from_canopies(
+        items,
+        tiles_dir=Path(args.tiles) if args.tiles else None,
+        passages=passages,
+        join_m=args.join_m,
+        row_join_m=args.row_join_m,
+    )
     _dump_geojson(items, Path(args.out))
     print(f"derived {len(items)} features -> {args.out}")
     return 0
@@ -195,10 +181,37 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_marcaj_import(args: argparse.Namespace) -> int:
+    images = collect_cvat_images(Path(args.source))
+    items = projected_from_cvat(images, Path(args.tiles))
+    dump_projected_geojson(items, Path(args.out))
+    n = len(items)
+    kinds = {}
+    for p in items:
+        kinds[p.kind] = kinds.get(p.kind, 0) + 1
+    print(f"imported {n} Marcaj shapes {kinds} -> {args.out} (no GIS re-derive)")
+    return 0
+
+
+def _cmd_web_layers(args: argparse.Namespace) -> int:
+    written = write_web_layers(
+        layers=Path(args.layers) if args.layers else None,
+        inspector=Path(args.inspector) if args.inspector else None,
+        farmer=Path(args.farmer) if args.farmer else None,
+        measurements=Path(args.measurements) if args.measurements else None,
+        forbidden=Path(args.forbidden) if args.forbidden else None,
+        passages=Path(args.passages) if args.passages else None,
+        inspections=Path(args.inspections) if args.inspections else None,
+        out_dir=Path(args.out_dir),
+    )
+    print("wrote " + ", ".join(str(p) for p in written))
+    return 0
+
+
 def _cmd_route(args: argparse.Namespace) -> int:
     from .crs import to_work_xy
     from .ids import centroid
-    from .inspect import parse_targets, select_waypoints
+    from .inspect import parse_targets, select_waypoints, waste_targets
     from .route import load_official_start, passable_from_items
 
     if args.start:
@@ -211,10 +224,20 @@ def _cmd_route(args: argparse.Namespace) -> int:
         start = load_official_start(Path(args.start_file) if args.start_file else None)
 
     items = _load_projected(Path(args.geojson))
-    if args.passages:
-        items.extend(_load_projected(Path(args.passages)))
-    if args.forbidden:
-        items.extend(_load_projected(Path(args.forbidden)))
+    passages_path = args.passages or (
+        str(Path("data/challenge/02_route/passages.geojson"))
+        if Path("data/challenge/02_route/passages.geojson").is_file()
+        else None
+    )
+    forbidden_path = args.forbidden or (
+        str(Path("data/challenge/02_route/forbidden.geojson"))
+        if Path("data/challenge/02_route/forbidden.geojson").is_file()
+        else None
+    )
+    if passages_path:
+        items.extend(_load_projected(Path(passages_path)))
+    if forbidden_path:
+        items.extend(_load_projected(Path(forbidden_path)))
     inter = [p.coords for p in items if p.kind == "interrow_area"]
     passages = [p.coords for p in items if p.kind == "passage"]
     forbidden = [p.coords for p in items if p.kind == "forbidden"]
@@ -228,6 +251,12 @@ def _cmd_route(args: argparse.Namespace) -> int:
         ]
     if not waypoints:
         raise SystemExit("No route targets (need inspections, waste, or interrow_area)")
+    if "inspections" in wanted and len(waypoints) > 280:
+        waste = waste_targets(items)
+        rest = [p for p in waypoints if p not in set(waste)]
+        step = max(1, len(rest) // max(1, 280 - len(waste)))
+        waypoints = waste + rest[::step]
+        print(f"capped inspector waypoints to {len(waypoints)}")
     tour = closed_walk(
         waypoints,
         start,
@@ -258,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
     pj.add_argument("inputs", nargs="+", help="GeoJSON files or directories")
     pj.add_argument("--tiles", default="data/tiles")
     pj.add_argument("--out", default="data/predictions_32635.geojson")
+    pj.add_argument("--min-plants", type=int, default=10, help="drop vineyard polygons on tiles below this count")
+    pj.add_argument("--nms-m", type=float, default=0.5, help="drop lower-score plants whose centroids are this close")
     pj.set_defaults(func=_cmd_project)
 
     st = sub.add_parser("stitch", help="Derive rows, inter-rows, and IDs from canopy polygons")
@@ -265,6 +296,8 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--out", default="data/stitched.geojson")
     st.add_argument("--tiles", default=None, help="tile directory for ExG cover")
     st.add_argument("--passages", default=None, help="GeoJSON that splits blocks (roads)")
+    st.add_argument("--join-m", type=float, default=6.0, help="max plant-to-plant gap for one vineyard_id")
+    st.add_argument("--row-join-m", type=float, default=2.0, help="max along-row gap to share a row_id across tiles")
     st.set_defaults(func=_cmd_stitch)
 
     cv = sub.add_parser("cvat-export", help="Build CVAT 1.1 ZIP(s) with shapes")
@@ -303,6 +336,26 @@ def main(argv: list[str] | None = None) -> int:
         help="comma list: inspections,waste (inspector) or waste (farmer)",
     )
     rt.set_defaults(func=_cmd_route)
+
+    mi = sub.add_parser(
+        "marcaj-import",
+        help="CVAT/Marcaj export (ZIP/XML/JSON) → EPSG:32635 GeoJSON; keeps human rows/plants",
+    )
+    mi.add_argument("source", help="ZIP, annotations.xml, json_simple, or a folder of those")
+    mi.add_argument("--tiles", default="data/tiles")
+    mi.add_argument("--out", default="data/marcaj_32635.geojson")
+    mi.set_defaults(func=_cmd_marcaj_import)
+
+    wl = sub.add_parser("web-layers", help="Reproject 32635 layers to WGS84 for MapLibre")
+    wl.add_argument("--layers", default=None, help="Marcaj 32635 FeatureCollection")
+    wl.add_argument("--inspector", default=None)
+    wl.add_argument("--farmer", default=None)
+    wl.add_argument("--measurements", default=None)
+    wl.add_argument("--forbidden", default=None)
+    wl.add_argument("--passages", default=None)
+    wl.add_argument("--inspections", default=None)
+    wl.add_argument("--out-dir", default="web/public/layers")
+    wl.set_defaults(func=_cmd_web_layers)
 
     args = p.parse_args(argv)
     return args.func(args)

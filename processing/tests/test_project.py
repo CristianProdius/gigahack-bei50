@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from siret3.georef import pixels_to_xy_once
-from siret3.project import project_inputs
+from siret3.georef import pixels_to_xy_once, xy_to_pixels_once
+from siret3.project import normalize_infer_feature, project_inputs
 
 REPO = Path(__file__).resolve().parents[2]
 TILE = REPO / "data/tiles/siret3_r021_c012.tif"
@@ -22,6 +22,20 @@ def test_pixels_to_xy_once_matches_raster_corners():
     assert pts[0][1] == pytest.approx(north, abs=1e-6)
     assert pts[1][0] == pytest.approx(east, abs=1e-6)
     assert pts[1][1] == pytest.approx(south, abs=1e-6)
+
+
+@pytest.mark.skipif(not TILE.is_file(), reason="challenge tile not unzipped")
+def test_xy_to_pixels_once_inverts_raster_corners():
+    import rasterio
+
+    with rasterio.open(TILE) as src:
+        west, south, east, north = src.bounds
+        width, height = src.width, src.height
+    cols_rows = xy_to_pixels_once(TILE, [(west, north), (east, south)])
+    assert cols_rows[0][0] == pytest.approx(0.0, abs=1e-6)
+    assert cols_rows[0][1] == pytest.approx(0.0, abs=1e-6)
+    assert cols_rows[1][0] == pytest.approx(width, abs=1e-6)
+    assert cols_rows[1][1] == pytest.approx(height, abs=1e-6)
 
 
 @pytest.mark.skipif(not TILE.is_file(), reason="challenge tile not unzipped")
@@ -64,3 +78,30 @@ def test_project_inputs_merges_two_pixel_files(tmp_path: Path):
     assert "32635" in fc["crs"]["properties"]["name"]
     ring = fc["features"][0]["geometry"]["coordinates"][0]
     assert ring[0][0] > 1000  # metres, not pixel col
+
+
+def test_normalize_drops_vine_row_so_strips_are_not_plants():
+    feat = {
+        "type": "Feature",
+        "properties": {"kind": "row", "label": "vine_row", "tile": "siret3_r001_c001.tif"},
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[0.0, 0.0], [20.0, 0.0], [20.0, 1.0], [0.0, 1.0], [0.0, 0.0]],
+        },
+    }
+    assert normalize_infer_feature(feat) is None
+
+
+def test_normalize_drops_pole_and_trunk():
+    pole = {
+        "type": "Feature",
+        "properties": {"kind": "row", "label": "pole"},
+        "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]},
+    }
+    trunk = {
+        "type": "Feature",
+        "properties": {"kind": "row", "label": "trunk"},
+        "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]},
+    }
+    assert normalize_infer_feature(pole) is None
+    assert normalize_infer_feature(trunk) is None

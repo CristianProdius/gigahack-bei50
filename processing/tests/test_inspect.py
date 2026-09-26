@@ -67,3 +67,26 @@ def test_select_waypoints_inspector_includes_gap_and_waste():
     assert len(inspector) == 2
     assert len(farmer) == 1
     assert farmer[0] == inspector[1] or farmer[0] in inspector
+
+
+def test_select_waypoints_uses_existing_inspection_points():
+    ins = ProjectedPoly(
+        kind="inspection",
+        vineyard_id="V01",
+        row_id="V01-R01",
+        coords=[(3.1, 0.0)],
+        tile="siret3_r001_c001.tif",
+        extras={"id": "INS-V01-R01-01"},
+    )
+    waste = ProjectedPoly(
+        kind="waste",
+        vineyard_id="V01",
+        coords=[(1.0, 3.0), (2.0, 3.0), (2.0, 4.0), (1.0, 4.0)],
+        tile="siret3_r001_c001.tif",
+    )
+    plants = [_plant(0.0, 0.0), _plant(8.0, 0.0)]
+    pts = select_waypoints(plants + [ins, waste], {"inspections", "waste"})
+    assert (3.1, 0.0) in pts
+    assert len([p for p in pts if p == (3.1, 0.0)]) == 1
+    farmer = select_waypoints(plants + [ins, waste], {"waste"})
+    assert len(farmer) == 1

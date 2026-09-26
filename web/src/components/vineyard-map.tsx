@@ -1,6 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  BarChart3,
+  Check,
+  Expand,
+  Leaf,
+  Layers3,
+  Minimize2,
+  Minus,
+  Navigation,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  RefreshCw,
+  Route,
+  Rows3,
+  ScanLine,
+  X,
+} from "lucide-react";
+import { toLonLatCollection } from "@/lib/geo";
 
 const SIRET3_XYZ =
   "https://api.imagery.hotosm.org/raster/collections/openaerialmap/items/683060c4025981aa411253c8/tiles/WebMercatorQuad/{z}/{x}/{y}?assets=visual";
@@ -9,7 +28,7 @@ const SIRET3_XYZ =
 const OFFICIAL_START: [number, number] = [28.7073776, 47.1230335];
 
 type Status = "loading" | "ready" | "error" | "empty";
-type Pick = { kind: string; id?: string; extra?: string };
+type WalkMode = "inspector" | "farmer" | "both";
 type Totals = {
   vineyard: number;
   row: number;
@@ -23,27 +42,63 @@ type Totals = {
   farmerM?: string;
 };
 
-type LayerKey = "vineyard" | "interrow" | "row" | "waste" | "forbidden" | "inspector" | "farmer";
+type LayerKey =
+  | "vineyard"
+  | "interrow"
+  | "row"
+  | "waste"
+  | "forbidden"
+  | "passage"
+  | "inspection"
+  | "inspector"
+  | "farmer";
+
+type Selected = {
+  title: string;
+  kind: string;
+  vineyardId?: string;
+  rowId?: string;
+  lengthM?: number;
+  structure?: string;
+  cover?: string;
+  note?: string;
+};
 
 const LAYER_MAP: Record<LayerKey, string[]> = {
-  vineyard: ["vineyard-fill"],
+  vineyard: ["vineyard-fill", "vineyard-pt"],
   interrow: ["interrow-fill"],
   row: ["row-line"],
   waste: ["waste-fill"],
   forbidden: ["forbidden-fill"],
+  passage: ["passage-fill"],
+  inspection: ["inspection-pt"],
   inspector: ["inspector-line"],
   farmer: ["farmer-line"],
 };
 
-const LAYERS: Array<{ key: LayerKey; label: string; swatch: string; hint: string }> = [
-  { key: "inspector", label: "Inspector walk", swatch: "#438bff", hint: "Gaps + waste" },
-  { key: "farmer", label: "Farmer walk", swatch: "#f05d55", hint: "Waste only" },
-  { key: "vineyard", label: "Canopies", swatch: "#166534", hint: "vineyard polygons" },
-  { key: "row", label: "Rows", swatch: "#d1fb55", hint: "row axes" },
-  { key: "interrow", label: "Inter-rows", swatch: "#a3e635", hint: "passable ground" },
-  { key: "waste", label: "Waste", swatch: "#ffa443", hint: "boxes" },
-  { key: "forbidden", label: "Forbidden", swatch: "#b91c1c", hint: "do not walk" },
+const LAYER_DEFS: Array<{ key: LayerKey; label: string; swatch: string; legend: string }> = [
+  { key: "vineyard", label: "Canopies", swatch: "canopy", legend: "Canopy" },
+  { key: "row", label: "Rows", swatch: "row", legend: "Row" },
+  { key: "interrow", label: "Inter-row Areas", swatch: "interrow", legend: "Inter-row" },
+  { key: "waste", label: "Waste", swatch: "waste", legend: "Waste" },
+  { key: "inspection", label: "Inspection Points", swatch: "inspection", legend: "Inspection" },
+  { key: "inspector", label: "Inspector walk", swatch: "inspector", legend: "Inspector" },
+  { key: "farmer", label: "Farmer walk", swatch: "farmer", legend: "Farmer" },
+  { key: "forbidden", label: "Forbidden", swatch: "forbidden", legend: "Forbidden" },
+  { key: "passage", label: "Passages", swatch: "passage", legend: "Passage" },
 ];
+
+type Fc = { type?: string; features?: Array<{ properties?: Record<string, unknown>; geometry?: { type?: string } }> };
+
+async function fetchJson(url: string): Promise<Fc | null> {
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  return r.json();
+}
+
+function isSampleFeature(f: { properties?: Record<string, unknown> }) {
+  return f.properties?.sample === true || f.properties?.sample === "true";
+}
 
 function parseCsv(text: string): Totals {
   const lines = text.trim().split(/\r?\n/);
@@ -82,6 +137,13 @@ function fmtHa(value?: string) {
   return `${value} ha`;
 }
 
+function fmtKmFromM(value?: string) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (Number.isNaN(n)) return "—";
+  return `${(n / 1000).toFixed(2)} km`;
+}
+
 function applyLayerVisibility(map: import("maplibre-gl").Map, layers: Record<LayerKey, boolean>) {
   for (const [key, ids] of Object.entries(LAYER_MAP) as Array<[LayerKey, string[]]>) {
     const vis = layers[key] ? "visible" : "none";
@@ -91,12 +153,39 @@ function applyLayerVisibility(map: import("maplibre-gl").Map, layers: Record<Lay
   }
 }
 
+function selectedFromClick(layerId: string, props: Record<string, unknown>): Selected {
+  const kind = String(props.kind || layerId);
+  const vineyardId = props.vineyard_id ? String(props.vineyard_id) : undefined;
+  const rowId = props.row_id ? String(props.row_id) : undefined;
+  const structure = props.row_structure ? String(props.row_structure) : undefined;
+  const cover = props.interrow_cover ? String(props.interrow_cover) : undefined;
+  const lengthM = props.length_m != null && props.length_m !== "" ? Number(props.length_m) : undefined;
+  const titles: Record<string, string> = {
+    vineyard: "Canopy",
+    row: "Selected Row",
+    interrow_area: "Inter-row Area",
+    waste: "Waste",
+    inspection: "Inspection Point",
+    start: "Official start",
+    forbidden: "Forbidden zone",
+    passage: "Authorized passage",
+  };
+  let title = titles[kind] || kind;
+  if (kind === "route") title = layerId.includes("farmer") ? "Farmer walk" : "Inspector walk";
+  let note: string | undefined;
+  if (kind === "start") note = "47.1230335 N, 28.7073776 E";
+  if (props.area_m2 != null) note = `${props.area_m2} m²`;
+  if (cover) note = cover;
+  return { title, kind, vineyardId, rowId, structure, cover, lengthM, note };
+}
+
 export function VineyardMap() {
-  const ref = useRef<HTMLDivElement | null>(null);
+  const mapEl = useRef<HTMLDivElement | null>(null);
+  const workspace = useRef<HTMLElement | null>(null);
   const mapRef = useRef<import("maplibre-gl").Map | undefined>(undefined);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState("");
-  const [picked, setPicked] = useState<Pick | null>(null);
+  const [selected, setSelected] = useState<Selected | null>(null);
   const [reload, setReload] = useState(0);
   const [layers, setLayers] = useState<Record<LayerKey, boolean>>({
     vineyard: true,
@@ -104,40 +193,68 @@ export function VineyardMap() {
     row: true,
     waste: true,
     forbidden: true,
+    passage: true,
+    inspection: true,
     inspector: true,
     farmer: true,
   });
   const [totals, setTotals] = useState<Totals>({ vineyard: 0, row: 0, waste: 0 });
+  const [sampleMode, setSampleMode] = useState(true);
+  const [panelsVisible, setPanelsVisible] = useState(true);
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [walkMode, setWalkMode] = useState<WalkMode>("both");
+  const [fullscreen, setFullscreen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [mapZoom, setMapZoom] = useState(16.6);
+
+  useEffect(() => {
+    const onChange = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!message) return;
+    const timeout = window.setTimeout(() => setMessage(""), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
 
   useEffect(() => {
     let cancelled = false;
     let map: import("maplibre-gl").Map | undefined;
+    let ro: ResizeObserver | undefined;
 
     async function boot() {
       setStatus("loading");
       setError("");
       try {
         const maplibre = await import("maplibre-gl");
-        if (!ref.current || cancelled) return;
+        if (!mapEl.current || cancelled) return;
         maplibre.config.WORKER_URL = `${window.location.origin}/maplibre-gl-worker.mjs`;
 
-        const [sample, inspector, farmer, csvText] = await Promise.all([
-          fetch("/layers/sample.geojson").then((r) => {
-            if (!r.ok) throw new Error(`sample layers ${r.status}`);
-            return r.json();
-          }),
-          fetch("/layers/route.geojson").then((r) => {
-            if (!r.ok) throw new Error(`inspector route ${r.status}`);
-            return r.json();
-          }),
-          fetch("/layers/route-farmer.geojson").then((r) => {
-            if (!r.ok) throw new Error(`farmer route ${r.status}`);
-            return r.json();
-          }),
+        const [packed, sample, inspectorRaw, farmerRaw, csvText] = await Promise.all([
+          fetchJson("/layers/layers.geojson"),
+          fetchJson("/layers/sample.geojson"),
+          fetchJson("/layers/route.geojson"),
+          fetchJson("/layers/route-farmer.geojson"),
           fetch("/layers/measurements.csv").then((r) => (r.ok ? r.text() : "")),
         ]);
+        if (!packed && !sample) throw new Error("no layer GeoJSON in /layers/");
 
-        const feats = (sample.features || []) as Array<{ properties?: { kind?: string } }>;
+        const packedFc = toLonLatCollection(packed || { features: [] });
+        const sampleFc = toLonLatCollection(sample || { features: [] });
+        const packedFeats = packedFc.features || [];
+        const hasRealCanopy = packedFeats.some((f) => f.properties?.kind === "vineyard");
+        const sampleFcFeatures = sampleFc.features || [];
+        const sampleData = {
+          type: "FeatureCollection",
+          features: hasRealCanopy ? packedFeats : [...sampleFcFeatures, ...packedFeats],
+        };
+        const inspector = toLonLatCollection(inspectorRaw || { features: [] });
+        const farmer = toLonLatCollection(farmerRaw || { features: [] });
+        setSampleMode(!hasRealCanopy || sampleData.features.some(isSampleFeature));
+
+        const feats = sampleData.features as Array<{ properties?: { kind?: string } }>;
         const parsed = csvText ? parseCsv(csvText) : { vineyard: 0, row: 0, waste: 0 };
         const inspectorM = inspector.features?.[0]?.properties?.length_m;
         const farmerM = farmer.features?.[0]?.properties?.length_m;
@@ -156,7 +273,7 @@ export function VineyardMap() {
         setStatus(feats.length ? "ready" : "empty");
 
         map = new maplibre.Map({
-          container: ref.current,
+          container: mapEl.current,
           style: {
             version: 8,
             sources: {
@@ -185,14 +302,19 @@ export function VineyardMap() {
         mapRef.current = map;
         map.on("error", (ev) => {
           const msg = ev.error?.message || "";
+          if (msg.includes("siret3") && map.getLayer("siret3")) {
+            map.setPaintProperty("siret3", "raster-opacity", 0);
+          }
           if (msg.includes("Worker") || msg.includes("actors") || msg.includes("siret3") || msg.includes("Failed to fetch")) return;
         });
+        map.on("zoom", () => setMapZoom(map.getZoom()));
 
         map.on("load", () => {
           if (!map || cancelled) return;
-          map.addSource("sample", { type: "geojson", data: sample });
-          map.addSource("inspector", { type: "geojson", data: inspector });
-          map.addSource("farmer", { type: "geojson", data: farmer });
+          map.resize();
+          map.addSource("sample", { type: "geojson", data: sampleData as GeoJSON.GeoJSON });
+          map.addSource("inspector", { type: "geojson", data: inspector as GeoJSON.GeoJSON });
+          map.addSource("farmer", { type: "geojson", data: farmer as GeoJSON.GeoJSON });
           map.addSource("start", {
             type: "geojson",
             data: {
@@ -211,8 +333,23 @@ export function VineyardMap() {
             id: "vineyard-fill",
             type: "fill",
             source: "sample",
-            filter: ["==", ["get", "kind"], "vineyard"],
+            filter: [
+              "all",
+              ["==", ["get", "kind"], "vineyard"],
+              ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]],
+            ],
             paint: { "fill-color": "#166534", "fill-opacity": 0.32 },
+          });
+          map.addLayer({
+            id: "vineyard-pt",
+            type: "circle",
+            source: "sample",
+            filter: [
+              "all",
+              ["==", ["get", "kind"], "vineyard"],
+              ["==", ["geometry-type"], "Point"],
+            ],
+            paint: { "circle-color": "#166534", "circle-radius": 3.2, "circle-opacity": 0.75 },
           });
           map.addLayer({
             id: "interrow-fill",
@@ -220,6 +357,13 @@ export function VineyardMap() {
             source: "sample",
             filter: ["==", ["get", "kind"], "interrow_area"],
             paint: { "fill-color": "#a3e635", "fill-opacity": 0.22 },
+          });
+          map.addLayer({
+            id: "passage-fill",
+            type: "fill",
+            source: "sample",
+            filter: ["==", ["get", "kind"], "passage"],
+            paint: { "fill-color": "#94a3b8", "fill-opacity": 0.28 },
           });
           map.addLayer({
             id: "forbidden-fill",
@@ -257,38 +401,49 @@ export function VineyardMap() {
             paint: { "line-color": "#f05d55", "line-width": 2.8, "line-dasharray": [0.7, 1.3] },
           });
           map.addLayer({
+            id: "inspection-pt",
+            type: "circle",
+            source: "sample",
+            filter: ["==", ["get", "kind"], "inspection"],
+            paint: { "circle-color": "#38bdf8", "circle-radius": 4.5, "circle-stroke-width": 1, "circle-stroke-color": "#fff" },
+          });
+          map.addLayer({
             id: "start-pt",
             type: "circle",
             source: "start",
             paint: { "circle-color": "#438bff", "circle-radius": 7, "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
           });
 
-          for (const id of ["vineyard-fill", "interrow-fill", "waste-fill", "row-line", "inspector-line", "farmer-line", "start-pt"]) {
+          for (const id of [
+            "vineyard-fill",
+            "vineyard-pt",
+            "interrow-fill",
+            "waste-fill",
+            "row-line",
+            "inspector-line",
+            "farmer-line",
+            "forbidden-fill",
+            "passage-fill",
+            "inspection-pt",
+            "start-pt",
+          ]) {
+            map.on("mouseenter", id, () => {
+              map.getCanvas().style.cursor = "pointer";
+            });
+            map.on("mouseleave", id, () => {
+              map.getCanvas().style.cursor = "";
+            });
             map.on("click", id, (e) => {
               const f = e.features?.[0];
               if (!f) return;
-              const props = f.properties || {};
-              const extra =
-                props.area_m2 != null
-                  ? `${props.area_m2} m²`
-                  : props.length_m != null
-                    ? `${props.length_m} m`
-                    : props.interrow_cover
-                      ? String(props.interrow_cover)
-                      : props.kind === "start"
-                        ? "Official start · 47.1230335 N, 28.7073776 E"
-                        : undefined;
-              setPicked({
-                kind: String(props.kind || id),
-                id: props.id ? String(props.id) : props.role ? String(props.role) : undefined,
-                extra,
-              });
+              setSelected(selectedFromClick(id, (f.properties || {}) as Record<string, unknown>));
             });
           }
 
           applyLayerVisibility(map, layers);
-
         });
+        ro = new ResizeObserver(() => map?.resize());
+        if (mapEl.current) ro.observe(mapEl.current);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Unknown map error");
@@ -299,6 +454,7 @@ export function VineyardMap() {
     boot();
     return () => {
       cancelled = true;
+      ro?.disconnect();
       mapRef.current = undefined;
       map?.remove();
     };
@@ -312,7 +468,7 @@ export function VineyardMap() {
     applyLayerVisibility(map, layers);
   }, [layers]);
 
-  function toggle(key: LayerKey) {
+  function toggleLayer(key: LayerKey) {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
@@ -320,9 +476,43 @@ export function VineyardMap() {
     mapRef.current?.flyTo({ center: OFFICIAL_START, zoom: 16.6 });
   }
 
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await workspace.current?.requestFullscreen();
+    } catch {
+      setMessage("Full screen is unavailable in this browser.");
+    }
+  }
+
+  function showWalk() {
+    if (walkMode === "inspector") {
+      setLayers((prev) => ({ ...prev, inspector: true, farmer: false }));
+      setMessage(`Inspector walk ${fmtM(totals.inspectorM)} · gaps + waste`);
+    } else if (walkMode === "farmer") {
+      setLayers((prev) => ({ ...prev, inspector: false, farmer: true }));
+      setMessage(`Farmer walk ${fmtM(totals.farmerM)} · waste only`);
+    } else {
+      setLayers((prev) => ({ ...prev, inspector: true, farmer: true }));
+      setMessage(`Both walks · inspector ${fmtM(totals.inspectorM)} · farmer ${fmtM(totals.farmerM)}`);
+    }
+    recenter();
+  }
+
+  const blocks = totals.nBlocks ?? String(totals.vineyard || "—");
+  const rows = totals.nRows ?? String(totals.row || "—");
+  const routeKm =
+    walkMode === "farmer"
+      ? fmtKmFromM(totals.farmerM)
+      : walkMode === "inspector"
+        ? fmtKmFromM(totals.inspectorM)
+        : fmtKmFromM(totals.inspectorM);
+  const selectedRows = selected?.kind === "row";
+  const scaleM = Math.round(200 / Math.max(0.4, mapZoom / 16.6));
+
   return (
-    <div className="relative isolate h-dvh min-h-[36rem] overflow-hidden bg-[#111614] text-[#e8eee9]">
-      <div ref={ref} className="absolute inset-0" style={{ zIndex: 0 }} />
+    <main className="workspace" ref={workspace}>
+      <div ref={mapEl} className="map-surface" />
 
       {status === "loading" && (
         <div className="absolute inset-0 grid place-items-center bg-black/35 text-sm" style={{ zIndex: 10 }}>
@@ -330,121 +520,275 @@ export function VineyardMap() {
         </div>
       )}
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3 sm:p-4" style={{ zIndex: 20 }}>
-        <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2 shadow-md">
-          <span className="grid size-7 place-items-center rounded-full bg-[var(--lime)] text-xs font-bold text-[#152e11]">S3</span>
-          <div>
-            <h1 className="text-balance text-sm font-semibold text-white">Sireț3 vineyard map</h1>
-            <p className="text-pretty text-[11px] text-white/65">Marcaj · EPSG:32635 · 27 Sep 15:00</p>
-          </div>
+      <header className="topbar absolute inset-x-0 top-0 z-30 flex items-center justify-between">
+        <div className="brand flex items-center gap-3">
+          <span className="brand-mark">
+            <Leaf size={22} strokeWidth={2.4} />
+          </span>
+          <span>VINEYARD INSPECTOR</span>
         </div>
-        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
-          <span className="rounded-full bg-amber-200 px-2.5 py-1 text-[11px] font-semibold text-amber-950">SAMPLE</span>
-          <button
-            type="button"
-            onClick={recenter}
-            className="rounded-full border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-1.5 text-xs font-medium text-white"
+        <div className="top-actions flex items-center gap-3">
+          <IconAction
+            label={panelsVisible ? "Hide panels" : "Show panels"}
+            onClick={() => setPanelsVisible((value) => !value)}
+            pressed={!panelsVisible}
           >
-            Official start
-          </button>
-          <button
-            type="button"
-            onClick={() => setReload((n) => n + 1)}
-            className="rounded-full bg-[var(--lime)] px-3 py-1.5 text-xs font-semibold text-[#152e11]"
+            {panelsVisible ? <PanelLeftClose size={23} strokeWidth={1.8} /> : <PanelLeftOpen size={23} strokeWidth={1.8} />}
+          </IconAction>
+          <IconAction
+            label={fullscreen ? "Exit full screen" : "Enter full screen"}
+            onClick={toggleFullscreen}
+            pressed={fullscreen}
           >
-            Reload
-          </button>
+            {fullscreen ? <Minimize2 size={22} strokeWidth={1.9} /> : <Expand size={22} strokeWidth={1.9} />}
+          </IconAction>
+          <IconAction label="Reload layers" onClick={() => setReload((n) => n + 1)}>
+            <RefreshCw size={20} strokeWidth={1.9} />
+          </IconAction>
         </div>
       </header>
 
-      <aside className="absolute bottom-3 left-3 top-20 flex w-[min(100%-1.5rem,20rem)] flex-col gap-2 overflow-y-auto sm:top-24" style={{ zIndex: 10 }}>
-        <section className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] p-3 shadow-md">
-          <p className="text-[11px] font-semibold uppercase text-white/55">Layers</p>
-          <ul className="mt-2 flex flex-col">
-            {LAYERS.map((item) => (
-              <li key={item.key}>
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-white/5">
+      {panelsVisible && (
+        <>
+          <section className="identity-block" aria-label="Vineyard status">
+            <div className={`status-pill flex items-center gap-2 ${status === "loading" ? "is-processing" : ""}`}>
+              <span className="status-dot" />
+              {status === "loading" ? "Processing…" : status === "error" ? "Map error" : status === "empty" ? "No features" : "Analysis Complete"}
+            </div>
+            <h1>Sireț3</h1>
+            <div className="identity-meta flex items-center gap-2">
+              <p>
+                Aerial inspection <span>·</span> EPSG:32635
+              </p>
+              <div className={sampleMode ? "demo-tag" : "demo-tag is-live"}>{sampleMode ? "SAMPLE" : "MARCAJ"}</div>
+            </div>
+          </section>
+
+          <section className="panel layers-panel" aria-labelledby="layers-heading">
+            <div className="panel-title flex items-center gap-3">
+              <Layers3 size={22} fill="white" strokeWidth={1.6} />
+              <h2 id="layers-heading">Layers</h2>
+            </div>
+            <div className="layer-list">
+              {LAYER_DEFS.map(({ key, label, swatch }) => (
+                <label key={key} className={`layer-row flex items-center ${layers[key] ? "" : "layer-disabled"}`}>
                   <input
                     type="checkbox"
-                    checked={layers[item.key]}
-                    onChange={() => toggle(item.key)}
-                    className="size-4 accent-[var(--lime)]"
+                    checked={layers[key]}
+                    onChange={() => toggleLayer(key)}
+                    className="layer-native-check"
                   />
-                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: item.swatch }} />
-                  <span className="min-w-0 flex-1 truncate text-white">{item.label}</span>
-                  <span className="tabular-nums text-[11px] text-white/50">
-                    {item.key === "inspector" ? fmtM(totals.inspectorM) : item.key === "farmer" ? fmtM(totals.farmerM) : item.hint}
+                  <span className={`layer-check layer-check-${key}`} aria-hidden="true">
+                    {layers[key] && <Check size={14} strokeWidth={2.7} />}
                   </span>
+                  <span className="layer-label">{label}</span>
+                  <span className={`swatch swatch-${swatch}`} aria-hidden="true" />
                 </label>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] p-3 shadow-md">
-          <p className="text-[11px] font-semibold uppercase text-white/55">Measurements</p>
-          {status === "error" && (
-            <p className="mt-2 text-pretty text-sm text-red-300">
-              {error}. Check OpenAerialMap and reload.
-            </p>
-          )}
-          {status === "empty" && (
-            <p className="mt-2 text-pretty text-sm text-white/70">
-              No features. Drop a Marcaj export into <code>web/public/layers/</code>.
-            </p>
-          )}
-          {(status === "ready" || status === "loading") && (
-            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-              <div>
-                <dt className="text-[11px] text-white/50">Blocks</dt>
-                <dd className="tabular-nums font-medium">{totals.nBlocks ?? totals.vineyard}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-white/50">Rows</dt>
-                <dd className="tabular-nums font-medium">{totals.nRows ?? totals.row}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-white/50">Canopy</dt>
-                <dd className="tabular-nums font-medium">{fmtHa(totals.canopyHa)}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-white/50">Inter-row</dt>
-                <dd className="tabular-nums font-medium">{fmtHa(totals.interrowHa)}</dd>
-              </div>
-              <div className="col-span-2">
-                <dt className="text-[11px] text-white/50">Row length</dt>
-                <dd className="tabular-nums font-medium">{fmtM(totals.rowLengthM)}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-white/50">Inspector</dt>
-                <dd className="tabular-nums font-medium text-[var(--blue)]">{fmtM(totals.inspectorM)}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-white/50">Farmer</dt>
-                <dd className="tabular-nums font-medium text-[var(--red)]">{fmtM(totals.farmerM)}</dd>
-              </div>
-            </dl>
-          )}
-        </section>
-
-        {picked && (
-          <section className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] p-3 shadow-md">
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-[11px] font-semibold uppercase text-white/55">Selected</p>
-              <button type="button" onClick={() => setPicked(null)} className="text-xs text-white/60">
-                Clear
-              </button>
+              ))}
             </div>
-            <p className="mt-1 font-medium text-white">{picked.kind}</p>
-            {picked.id && <p className="tabular-nums text-sm text-white/80">ID {picked.id}</p>}
-            {picked.extra && <p className="text-pretty text-sm text-white/70">{picked.extra}</p>}
           </section>
-        )}
 
-        <p className="px-1 text-pretty text-[11px] text-white/55">
-          Official start 47.1230335 N, 28.7073776 E. Inspector (blue) visits gaps and waste. Farmer (red) collects waste only.
-        </p>
-      </aside>
+          <div className="right-panel-stack">
+            <section className="panel summary-panel" aria-labelledby="summary-heading">
+              <div className="panel-title flex items-center gap-3">
+                <BarChart3 size={23} fill="white" strokeWidth={1.5} />
+                <h2 id="summary-heading">Vineyard Summary</h2>
+              </div>
+              <div className="summary-grid grid grid-cols-2 gap-2">
+                <SummaryMetric icon={<Layers3 />} label="Blocks" value={blocks} />
+                <SummaryMetric icon={<Rows3 />} label="Rows" value={rows} />
+                <SummaryMetric icon={<Leaf />} label="Canopy Area" value={fmtHa(totals.canopyHa)} />
+                <SummaryMetric icon={<ScanLine />} label="Inter-row Area" value={fmtHa(totals.interrowHa)} />
+                <SummaryMetric icon={<Route />} label="Total Row Length" value={fmtM(totals.rowLengthM)} compact />
+                <SummaryMetric icon={<Route />} label="Route" value={routeKm} />
+              </div>
+            </section>
+
+            {!plannerOpen && (
+              <section className="panel selected-panel" aria-labelledby="selected-heading">
+                <div className="panel-title flex items-center gap-3">
+                  <Leaf size={23} fill="white" strokeWidth={1.3} />
+                  <h2 id="selected-heading">{selected?.title || "Selected Feature"}</h2>
+                </div>
+                {selected ? (
+                  <div className="detail-list">
+                    {selected.vineyardId && <Detail label="Vineyard ID" value={selected.vineyardId} />}
+                    {selected.rowId && <Detail label="Row ID" value={selected.rowId} />}
+                    {selected.lengthM != null && !Number.isNaN(selected.lengthM) && (
+                      <Detail label="Length" value={`${selected.lengthM.toFixed(1)} m`} />
+                    )}
+                    {selected.structure && (
+                      <Detail
+                        label="Structure"
+                        value={selected.structure === "disrupted" ? "Disrupted" : selected.structure}
+                        alert={selected.structure === "disrupted"}
+                      />
+                    )}
+                    {!selectedRows && <Detail label="Details" value={selected.note || "No attributes available"} />}
+                  </div>
+                ) : (
+                  <p className="empty-selection">Click an annotation to inspect it.</p>
+                )}
+              </section>
+            )}
+          </div>
+
+          {plannerOpen && (
+            <section className="panel route-planner" id="route-planner" aria-labelledby="planner-heading">
+              <div className="panel-title planner-title flex items-center gap-3">
+                <Route size={25} strokeWidth={1.6} />
+                <h2 id="planner-heading">Route Planner</h2>
+                <button type="button" className="collapse-button" onClick={() => setPlannerOpen(false)} aria-label="Close route planner">
+                  <Minus size={20} />
+                </button>
+              </div>
+              <div className="planner-body">
+                <p className="field-label">Which walk</p>
+                <div className="segmented three flex gap-1">
+                  <Choice active={walkMode === "inspector"} onClick={() => setWalkMode("inspector")} label="Inspector" />
+                  <Choice active={walkMode === "farmer"} onClick={() => setWalkMode("farmer")} label="Farmer" />
+                  <Choice active={walkMode === "both"} onClick={() => setWalkMode("both")} label="Both" />
+                </div>
+                <button type="button" className="build-button flex items-center justify-center gap-3" onClick={showWalk}>
+                  <Route size={24} strokeWidth={1.8} />
+                  Show walk
+                </button>
+                <p className="route-caption">
+                  Inspector {fmtM(totals.inspectorM)} <span>·</span> Farmer {fmtM(totals.farmerM)}
+                </p>
+              </div>
+            </section>
+          )}
+
+          <div className="map-controls flex flex-col gap-1" aria-label="Map controls">
+            <IconAction label="Zoom in" onClick={() => mapRef.current?.zoomIn()}>
+              <Plus size={25} />
+            </IconAction>
+            <IconAction label="Zoom out" onClick={() => mapRef.current?.zoomOut()}>
+              <Minus size={25} />
+            </IconAction>
+            <IconAction label="Go to start point" title="Go to start point" onClick={recenter}>
+              <Navigation size={22} fill="white" />
+            </IconAction>
+          </div>
+
+          <section className="legend panel flex items-center gap-4" aria-label="Map legend">
+            {LAYER_DEFS.map((layer) => (
+              <div key={layer.key} className="legend-item flex items-center gap-2">
+                <span className={`swatch swatch-${layer.swatch}`} aria-hidden="true" />
+                <span>{layer.legend}</span>
+              </div>
+            ))}
+          </section>
+          <button
+            type="button"
+            className="plan-button flex items-center justify-center gap-3"
+            aria-expanded={plannerOpen}
+            aria-controls="route-planner"
+            onClick={() => setPlannerOpen((value) => !value)}
+          >
+            <Route size={24} strokeWidth={1.8} />
+            Plan Route
+          </button>
+          <div className="scale" aria-label={`Map scale approximately ${scaleM} metres`}>
+            <div className="scale-labels">
+              <span>0</span>
+              <span>{Math.round(scaleM / 4)}</span>
+              <span>{Math.round(scaleM / 2)}</span>
+              <span>{scaleM} m</span>
+            </div>
+            <div className="scale-rule">
+              <i />
+              <i />
+              <i />
+              <i />
+            </div>
+          </div>
+        </>
+      )}
+
+      {(message || error) && (
+        <div className="toast" role="status" aria-live="polite">
+          <span>{error || message}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setMessage("");
+              setError("");
+            }}
+            aria-label="Dismiss message"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {!panelsVisible && <div className="hidden-panels-hint">Panels hidden · use the top control to restore</div>}
+    </main>
+  );
+}
+
+function IconAction({
+  label,
+  children,
+  onClick,
+  pressed,
+  title,
+}: {
+  label: string;
+  children: ReactNode;
+  onClick: () => void;
+  pressed?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="round-action grid place-items-center"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={pressed}
+      title={title || label}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Choice({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      className={`choice flex items-center justify-center gap-2 ${active ? "is-active" : ""}`}
+      onClick={onClick}
+      aria-pressed={active}
+    >
+      <span className="choice-radio" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function SummaryMetric({ icon, label, value, compact = false }: { icon: ReactNode; label: string; value: string; compact?: boolean }) {
+  return (
+    <div className={`metric flex items-center gap-3 ${compact ? "metric-compact" : ""}`}>
+      <span className="metric-icon">{icon}</span>
+      <div>
+        <span className="metric-label">{label}</span>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
+function Detail({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
+  return (
+    <div className="detail-row flex items-center justify-between gap-2">
+      <span>{label}</span>
+      <strong className={alert ? "alert-value" : ""}>
+        {value}
+        {alert && <span className="alert-symbol">▲</span>}
+      </strong>
     </div>
   );
 }

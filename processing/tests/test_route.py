@@ -9,6 +9,7 @@ from siret3.route import (
     is_passable,
     passable_union,
     snap_start,
+    snap_walk,
     write_route_geojson,
 )
 
@@ -60,6 +61,15 @@ def test_diagonal_through_hole_is_illegal():
     )
     assert illegal_length_fraction([(2, 2), (18, 2)], donut) < 0.02
     assert illegal_length_fraction([(2, 2), (18, 18)], donut) > 0.2
+
+
+def test_snap_walk_pulls_offset_line_onto_corridor():
+    corridor = [(0, 0), (20, 0), (20, 4), (0, 4)]
+    poly = passable_union([corridor], [], [])
+    coords = [(1.0, 2.0), (19.0, 4.15)]
+    assert illegal_length_fraction(coords, poly) > 0.02
+    snapped = snap_walk(coords, poly)
+    assert illegal_length_fraction(snapped, poly) <= 0.02
 
 
 def test_illegal_fraction_high_on_shortcut():

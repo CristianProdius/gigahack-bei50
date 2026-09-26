@@ -5,9 +5,30 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .filter_plants import drop_sparse_tile_canopies, nms_canopy_centroids
 from .georef import pixels_to_xy_once
 
 WORK_CRS = "EPSG:32635"
+SKIP_LABELS = {"pole", "trunk", "vine_row"}
+CANOPY_LABELS = {"vineyard", "canopy", "plant", "vine"}
+
+
+def normalize_infer_feature(feat: dict) -> dict | None:
+    """Map YOLO class names onto Marcaj kinds. Drop poles/trunks."""
+    props = dict(feat.get("properties") or {})
+    label = str(props.get("label") or props.get("kind") or "")
+    if label in SKIP_LABELS:
+        return None
+    geom = dict(feat.get("geometry") or {})
+    if label in CANOPY_LABELS:
+        props["kind"] = "vineyard"
+        coords = geom.get("coordinates")
+        if geom.get("type") == "LineString" and coords:
+            ring = [list(pt) for pt in coords]
+            if ring and ring[0] != ring[-1]:
+                ring.append(list(ring[0]))
+            geom = {"type": "Polygon", "coordinates": [ring]}
+    return {**feat, "properties": props, "geometry": geom}
 
 
 def collect_geojson_paths(inputs: list[Path]) -> list[Path]:
@@ -34,13 +55,22 @@ def _project_coords(coords, tile: Path):
     return [_project_coords(part, tile) for part in coords]
 
 
-def project_inputs(inputs: list[Path], tiles_dir: Path) -> dict:
+def project_inputs(
+    inputs: list[Path],
+    tiles_dir: Path,
+    *,
+    min_plants: int = 0,
+    nms_m: float = 0.0,
+) -> dict:
     tiles_dir = Path(tiles_dir)
     features = []
     cache: dict[str, Path] = {}
     for path in collect_geojson_paths(inputs):
         data = json.loads(Path(path).read_text(encoding="utf-8"))
-        for feat in data.get("features") or []:
+        for raw in data.get("features") or []:
+            feat = normalize_infer_feature(raw)
+            if feat is None:
+                continue
             props = dict(feat.get("properties") or {})
             tile_name = props.get("tile") or f"{path.stem}.tif"
             tile = cache.get(tile_name)
@@ -53,6 +83,8 @@ def project_inputs(inputs: list[Path], tiles_dir: Path) -> dict:
             if geom.get("coordinates") is not None:
                 geom = {**geom, "coordinates": _project_coords(geom["coordinates"], tile)}
             features.append({"type": "Feature", "properties": props, "geometry": geom})
+    features = drop_sparse_tile_canopies(features, min_plants=min_plants)
+    features = nms_canopy_centroids(features, min_dist_m=nms_m)
     return {
         "type": "FeatureCollection",
         "name": "siret3_predictions_32635",
@@ -61,8 +93,15 @@ def project_inputs(inputs: list[Path], tiles_dir: Path) -> dict:
     }
 
 
-def write_projected(inputs: list[Path], tiles_dir: Path, out: Path) -> dict:
-    fc = project_inputs(inputs, tiles_dir)
+def write_projected(
+    inputs: list[Path],
+    tiles_dir: Path,
+    out: Path,
+    *,
+    min_plants: int = 0,
+    nms_m: float = 0.0,
+) -> dict:
+    fc = project_inputs(inputs, tiles_dir, min_plants=min_plants, nms_m=nms_m)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(fc, indent=2), encoding="utf-8")
