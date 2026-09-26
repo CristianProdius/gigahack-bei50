@@ -92,7 +92,15 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
 
 ## Repro: model → one import → publish → measure → route → map
 
-1. **Model (H100).** Riseholme COCO [10.5281/zenodo.19234907](https://doi.org/10.5281/zenodo.19234907) (CC-BY-4.0) + DroneWaste [10.5281/zenodo.17045559](https://doi.org/10.5281/zenodo.17045559) (CC-BY-4.0).
+1. **Model (H100).** Riseholme COCO [10.5281/zenodo.19234907](https://doi.org/10.5281/zenodo.19234907) (CC-BY-4.0) + DroneWaste [10.5281/zenodo.17045559](https://doi.org/10.5281/zenodo.17045559) (CC-BY-4.0). Checkpoints live in `models/weights/` and on the [v0.1.0 GitHub release](https://github.com/CristianProdius/bei50/releases/tag/v0.1.0):
+
+   ```bash
+   mkdir -p models/weights
+   curl -L -o models/weights/vineyard.pt https://github.com/CristianProdius/bei50/releases/download/v0.1.0/vineyard.pt
+   curl -L -o models/weights/waste.pt https://github.com/CristianProdius/bei50/releases/download/v0.1.0/waste.pt
+   ```
+
+   `vineyard.pt` is YOLO11m-seg (Riseholme). `waste.pt` is YOLO12m detect (DroneWaste). To retrain:
 
    ```bash
    python models/train_yolo.py --task segment --data models/configs/vineyard.yaml --profile h100
@@ -117,17 +125,25 @@ Opens [http://127.0.0.1:43173](http://127.0.0.1:43173). Sample layers are synthe
 
    Dry-run three tiles before the full zip. Then publish in Marcaj.
 
-4. **Measurements + route** from the Marcaj export (planar EPSG:32635, no DEM).
+4. **Measurements + route** from the Marcaj export (planar EPSG:32635, no DEM). Keep human plants and rows — do not run `stitch` on the export.
 
    ```bash
-   siret3 measurements data/stitched.geojson --out measurements.csv
-   siret3 route data/stitched.geojson --targets inspections,waste --out route.geojson
-   siret3 route data/stitched.geojson --targets waste --out route_farmer.geojson
+   siret3 marcaj-import data/marcaj_export --tiles data/tiles --out data/marcaj_32635.geojson
+   siret3 inspect data/marcaj_32635.geojson --out inspections.geojson
+   siret3 measurements data/marcaj_32635.geojson --out measurements.csv
+   siret3 route data/marcaj_32635.geojson --targets inspections,waste --out route.geojson
+   siret3 route data/marcaj_32635.geojson --targets waste --out route_farmer.geojson
+   siret3 web-layers --layers data/marcaj_32635.geojson \
+     --inspector route.geojson --farmer route_farmer.geojson \
+     --measurements measurements.csv --inspections inspections.geojson \
+     --forbidden data/challenge/02_route/forbidden.geojson \
+     --passages data/challenge/02_route/passages.geojson \
+     --out-dir web/public/layers
    ```
 
-   Start must snap within 5 m. Both walks use inter-row + authorised passages only. Inspector = 25% file. Farmer = waste collect.
+   `marcaj-import` accepts a CVAT ZIP, `annotations.xml`, json_simple, or a folder of those. Start must snap within 5 m. Both walks use inter-row + authorised passages only. Inspector = 25% file. Farmer = waste collect.
 
-5. **Web UI.** Refresh the map. Replace SAMPLE layers. Show inspector (blue) and farmer (red) with each `length_m`.
+5. **Web UI.** [http://127.0.0.1:43173](http://127.0.0.1:43173). Inspector (blue) and farmer (red) with each `length_m`. Badge reads SAMPLE until `layers.geojson` contains Marcaj canopies.
 
 ## Sireț3 imagery
 

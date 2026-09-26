@@ -24,7 +24,9 @@ data/predictions/
 data/predictions_waste/
 data/predictions_32635.geojson
 data/stitched.geojson
-models/weights/
+models/weights/*
+!models/weights/vineyard.pt
+!models/weights/waste.pt
 # Official pack rasters stay on disk (~1 GB). Docs, GeoJSON, PDFs, and previews stay tracked.
 data/challenge/01_tiles/*.zip
 data/challenge/04_source/*.tif
@@ -33,6 +35,8 @@ data/challenge/04_source/*.tiff
 datasets/
 vendor/
 *.pt
+!models/weights/vineyard.pt
+!models/weights/waste.pt
 *.pth
 *.onnx
 *.engine
