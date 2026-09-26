@@ -7,10 +7,10 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 
-from .georef import xy_to_pixels
+from .georef import xy_to_pixels_once
 from .ids import ProjectedPoly, _row_heading, assign_block_ids, assign_row_ids, centroid
 from .cvat11 import CvatImage, CvatShape
 
@@ -83,12 +83,46 @@ def _structure_from_gaps(pts: list[tuple[float, float]], heading: float) -> str:
     return "regular"
 
 
+def row_axis_from_strip(coords: list[tuple[float, float]]) -> list[tuple[float, float]] | None:
+    if len(coords) < 4:
+        return None
+    poly = Polygon(coords)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    if poly.is_empty:
+        return None
+    ring = list(poly.minimum_rotated_rectangle.exterior.coords)
+    edges = []
+    for a, b in zip(ring, ring[1:]):
+        d = ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+        edges.append((d, a, b))
+    if len(edges) < 4:
+        return None
+    edges.sort(key=lambda e: e[0])
+    short_a, short_b = edges[0], edges[1]
+    mid = lambda e: ((e[1][0] + e[2][0]) / 2.0, (e[1][1] + e[2][1]) / 2.0)
+    return [mid(short_a), mid(short_b)]
+
+
 def rows_from_canopies(vines: list[ProjectedPoly]) -> list[ProjectedPoly]:
     rows: list[ProjectedPoly] = []
     groups: dict[tuple[str | None, str], list[ProjectedPoly]] = defaultdict(list)
     for v in vines:
         if v.kind != "vineyard":
             continue
+        if (v.extras or {}).get("label") == "vine_row":
+            axis = row_axis_from_strip(v.coords)
+            if axis:
+                rows.append(
+                    ProjectedPoly(
+                        kind="row",
+                        coords=axis,
+                        tile=v.tile,
+                        vineyard_id=v.vineyard_id,
+                        row_structure="regular",
+                    )
+                )
+                continue
         groups[(v.vineyard_id, v.tile)].append(v)
     for (vid, tile), plants in groups.items():
         cents = [centroid(p.coords) for p in plants]
@@ -114,6 +148,46 @@ def rows_from_canopies(vines: list[ProjectedPoly]) -> list[ProjectedPoly]:
     return rows
 
 
+def _xy_at_along(
+    coords: list[tuple[float, float]], heading: float, along: float
+) -> tuple[float, float]:
+    p0, p1 = coords[0], coords[-1]
+    ux, uy = math.cos(heading), math.sin(heading)
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    den = dx * ux + dy * uy
+    if abs(den) < 1e-6:
+        return p0
+    t = (along - _along_coord(p0, heading)) / den
+    return (p0[0] + t * dx, p0[1] + t * dy)
+
+
+def _overlap_corridor(
+    a: list[tuple[float, float]],
+    b: list[tuple[float, float]],
+    heading: float,
+    min_len: float = 1.0,
+) -> list[tuple[float, float]] | None:
+    if len(a) < 2 or len(b) < 2:
+        return None
+    aa = [_along_coord(p, heading) for p in a]
+    ab = [_along_coord(p, heading) for p in b]
+    pad = 1.5
+    lo = max(min(aa) - pad, min(ab) - pad)
+    hi = min(max(aa) + pad, max(ab) + pad)
+    # keep the corridor inside the union of the two rows, not far past both
+    union_lo = min(min(aa), min(ab))
+    union_hi = max(max(aa), max(ab))
+    lo = max(lo, union_lo)
+    hi = min(hi, union_hi)
+    if hi - lo < min_len:
+        return None
+    pa0 = _xy_at_along(a, heading, lo)
+    pa1 = _xy_at_along(a, heading, hi)
+    pb1 = _xy_at_along(b, heading, hi)
+    pb0 = _xy_at_along(b, heading, lo)
+    return [pa0, pa1, pb1, pb0, pa0]
+
+
 def interrows_from_rows(
     rows: list[ProjectedPoly],
     vines: list[ProjectedPoly],
@@ -134,24 +208,18 @@ def interrows_from_rows(
             [Polygon(p.coords).buffer(0.12) for p in plants.get(key, []) if len(p.coords) >= 3]
         )
         for a, b in zip(tile_rows, tile_rows[1:]):
-            ring = list(a.coords) + list(reversed(b.coords))
-            if ring[0] != ring[-1]:
-                ring.append(ring[0])
+            ring = _overlap_corridor(a.coords, b.coords, heading)
+            if ring is None:
+                continue
             poly = Polygon(ring)
             if not poly.is_valid or poly.is_empty:
                 poly = poly.buffer(0)
-            if (poly.is_empty or poly.area < 1.0) and len(a.coords) >= 2 and len(b.coords) >= 2:
-                la, lb = LineString(a.coords), LineString(b.coords)
-                dist = max(float(la.distance(lb)), 0.5)
-                poly = la.buffer(dist, cap_style=2).intersection(lb.buffer(dist, cap_style=2))
             if not poly.is_empty and not canopy_union.is_empty:
                 cut = poly.difference(canopy_union)
                 if not cut.is_empty:
                     poly = cut
             if poly.geom_type == "MultiPolygon":
                 poly = max(poly.geoms, key=lambda g: g.area)
-            if poly.geom_type != "Polygon" or poly.is_empty:
-                poly = Polygon(ring)
             if not poly.is_valid:
                 poly = poly.buffer(0)
             if poly.is_empty or poly.geom_type != "Polygon":
@@ -224,14 +292,17 @@ def derive_from_canopies(
     *,
     tiles_dir: Path | None = None,
     passages: list[list[tuple[float, float]]] | None = None,
+    join_m: float = 6.0,
+    row_join_m: float = 2.0,
 ) -> list[ProjectedPoly]:
     vines = assign_block_ids(
         [p for p in items if p.kind == "vineyard"],
+        join_m=join_m,
         passages=passages,
     )
     others = [p for p in items if p.kind != "vineyard"]
     rows = rows_from_canopies(vines)
-    combined = assign_row_ids(vines + rows, join_m=2.0)
+    combined = assign_row_ids(vines + rows, join_m=row_join_m)
     vines = [p for p in combined if p.kind == "vineyard"]
     rows = [p for p in combined if p.kind == "row"]
     inter = interrows_from_rows(rows, vines)
@@ -250,6 +321,34 @@ def derive_from_canopies(
     return out
 
 
+def clip_simplify_ring(
+    points: list[tuple[float, float]],
+    width: int,
+    height: int,
+    tolerance: float,
+) -> list[tuple[float, float]]:
+    """Clip a ring to the tile and drop dense vertices for the 90 MiB ZIP cap."""
+    if len(points) < 4:
+        return points
+    poly = Polygon(points)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    if poly.is_empty:
+        return points
+    clipped = poly.intersection(box(0.0, 0.0, float(width), float(height)))
+    if clipped.is_empty:
+        return points
+    if clipped.geom_type == "MultiPolygon":
+        clipped = max(clipped.geoms, key=lambda g: g.area)
+    if clipped.geom_type != "Polygon":
+        return points
+    simple = clipped.simplify(tolerance, preserve_topology=True)
+    if simple.is_empty or simple.geom_type != "Polygon":
+        simple = clipped
+    ring = [(float(x), float(y)) for x, y in simple.exterior.coords]
+    return ring if len(ring) >= 4 else points
+
+
 def images_from_projected(items: list[ProjectedPoly], tiles_dir: Path) -> list[CvatImage]:
     tiles_dir = Path(tiles_dir)
     by_tile: dict[str, list[ProjectedPoly]] = defaultdict(list)
@@ -260,16 +359,23 @@ def images_from_projected(items: list[ProjectedPoly], tiles_dir: Path) -> list[C
     for name, feats in sorted(by_tile.items()):
         tile = tiles_dir / name
         width = height = 2048
+        inv = None
         try:
             import rasterio
 
             with rasterio.open(tile) as src:
                 width, height = src.width, src.height
+                inv = ~src.transform
         except Exception:
             pass
         shapes: list[CvatShape] = []
         for p in feats:
-            px = xy_to_pixels(tile, p.coords) if tile.is_file() else p.coords
+            if inv is not None:
+                px = [tuple(map(float, inv @ (x, y))) for x, y in p.coords]
+            elif tile.is_file():
+                px = xy_to_pixels_once(tile, p.coords)
+            else:
+                px = p.coords
             attrs: dict[str, str] = {"vineyard_id": p.vineyard_id or ""}
             if p.kind == "row":
                 attrs["row_id"] = p.row_id or ""
@@ -293,6 +399,8 @@ def images_from_projected(items: list[ProjectedPoly], tiles_dir: Path) -> list[C
                 label = "interrow_area" if p.kind == "interrow_area" else "vineyard"
                 if p.kind == "interrow_area":
                     attrs["interrow_cover"] = p.interrow_cover or "bare_soil"
+                tol = 8.0 if p.kind == "interrow_area" else 2.0
+                px = clip_simplify_ring(px, width, height, tol)
                 shapes.append(CvatShape(tag="polygon", label=label, points=px, attributes=attrs))
         images.append(CvatImage(name=name, width=width, height=height, shapes=shapes))
     return images

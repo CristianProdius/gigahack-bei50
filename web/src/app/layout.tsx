@@ -8,7 +8,7 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Sireț3 vineyard map",
+  title: "Vineyard Inspector",
   description:
     "Marcaj vineyard viewer: Sireț3 ortho, IDs, planar measurements, inspector and farmer walks.",
 };

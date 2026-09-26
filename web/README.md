@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sireț3 map (`web/`)
 
-## Getting Started
-
-First, run the development server:
+Next.js + MapLibre viewer for the scored demo. **Port 43173**, not 3000.
 
 ```bash
+cd web
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://127.0.0.1:43173](http://127.0.0.1:43173).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Layers
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| File | What |
+| --- | --- |
+| `public/layers/sample.geojson` | Synthetic plants (SAMPLE badge). Used until a Marcaj pack has `vineyard` polygons. |
+| `public/layers/layers.geojson` | Packed WGS84: Marcaj canopies/rows/inter-rows/waste plus official forbidden + passages. |
+| `public/layers/route.geojson` | Inspector walk (blue). Display CRS is lon/lat; `length_m` is planar EPSG:32635. |
+| `public/layers/route-farmer.geojson` | Farmer walk (red). |
+| `public/layers/measurements.csv` | Jury CSV. |
 
-## Learn More
+After the team exports from Marcaj:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+siret3 marcaj-import data/marcaj_export --tiles data/tiles --out data/marcaj_32635.geojson
+siret3 inspect data/marcaj_32635.geojson --out inspections.geojson
+siret3 measurements data/marcaj_32635.geojson --out measurements.csv
+siret3 route data/marcaj_32635.geojson --targets inspections,waste --out route.geojson
+siret3 route data/marcaj_32635.geojson --targets waste --out route_farmer.geojson
+siret3 web-layers --layers data/marcaj_32635.geojson \
+  --inspector route.geojson --farmer route_farmer.geojson \
+  --measurements measurements.csv --inspections inspections.geojson \
+  --forbidden data/challenge/02_route/forbidden.geojson \
+  --passages data/challenge/02_route/passages.geojson \
+  --out-dir web/public/layers
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Reload the map. Badge switches from SAMPLE to Marcaj.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Do **not** merge git branch `frontend` into `main`. That app is a different Next.js tree on :3000.

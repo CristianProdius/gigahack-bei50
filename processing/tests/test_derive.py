@@ -48,6 +48,20 @@ def test_load_official_passages_multipolygon():
     assert any((p.extras or {}).get("holes") for p in items)
 
 
+def test_rows_from_elongated_canopy_uses_major_axis():
+    strip = ProjectedPoly(
+        kind="vineyard",
+        vineyard_id="V01",
+        coords=[(0.0, 0.0), (20.0, 0.0), (20.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+        tile="siret3_r001_c001.tif",
+        extras={"label": "vine_row"},
+    )
+    rows = rows_from_canopies([strip])
+    assert len(rows) == 1
+    length = ((rows[0].coords[0][0] - rows[0].coords[1][0]) ** 2 + (rows[0].coords[0][1] - rows[0].coords[1][1]) ** 2) ** 0.5
+    assert length == pytest.approx(20.0, abs=1.0)
+
+
 def test_interrows_pair_adjacent_diagonal_rows():
     rows = [
         ProjectedPoly(kind="row", coords=[(0, 0), (10, 10)], tile="t.tif", vineyard_id="V01"),
@@ -59,6 +73,16 @@ def test_interrows_pair_adjacent_diagonal_rows():
     first = inter[0].coords
     xs = [p[0] for p in first]
     assert min(xs) < 3.5
+
+
+def test_interrow_stays_on_overlapping_stretch():
+    long = ProjectedPoly(kind="row", coords=[(0.0, 0.0), (20.0, 0.0)], tile="t.tif", vineyard_id="V01")
+    short = ProjectedPoly(kind="row", coords=[(8.0, 2.0), (12.0, 2.0)], tile="t.tif", vineyard_id="V01")
+    inter = interrows_from_rows([long, short], [])
+    assert len(inter) == 1
+    xs = [p[0] for p in inter[0].coords]
+    assert min(xs) >= 6.0
+    assert max(xs) <= 14.0
 
 
 def test_row_ids_join_aligned_rows_across_large_seam_gap():
@@ -123,6 +147,22 @@ def test_derive_does_not_merge_canopies():
     vines = assign_block_ids([_plant(i * 1.2, 0.0) for i in range(5)])
     out = derive_from_canopies(vines)
     assert sum(1 for p in out if p.kind == "vineyard") == 5
+
+
+def test_derive_join_m_bridges_detection_gap_but_not_roads():
+    left = _plant(0.0, 0.0)
+    right = _plant(10.5, 0.0)
+    default = [p for p in derive_from_canopies([left, right]) if p.kind == "vineyard"]
+    assert len({p.vineyard_id for p in default}) == 2
+    merged = [p for p in derive_from_canopies([left, right], join_m=12.0) if p.kind == "vineyard"]
+    assert len({p.vineyard_id for p in merged}) == 1
+    road = [[(5.0, -8.0), (6.0, -8.0), (6.0, 8.0), (5.0, 8.0), (5.0, -8.0)]]
+    split = [
+        p
+        for p in derive_from_canopies([left, right], join_m=15.0, passages=road)
+        if p.kind == "vineyard"
+    ]
+    assert len({p.vineyard_id for p in split}) == 2
 
 
 @pytest.mark.skipif(not EXAMPLE_ZIP.is_file(), reason="official example ZIP missing")
