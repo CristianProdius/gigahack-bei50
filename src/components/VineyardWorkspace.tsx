@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from "react";
+import { forwardRef, memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
+import Brand from "./Brand";
+import UploadScreen, { type VineyardIdentity } from "./UploadScreen";
+import { useMapViewport, type MapHandle } from "./useMapViewport";
 import {
   BarChart3,
   Check,
@@ -34,6 +38,37 @@ import { isDemoMode, loadVineyard, uploadAndAnalyze } from "@/lib/vineyard-api";
 import { buildDemoRoute, inspectionPoints, wasteBoxes, type DemoRoute } from "@/lib/demo-route";
 
 type RowShape = { id: string; vineyardId: string; x1: number; y1: number; x2: number; y2: number; lengthM: number };
+const exitDurationMs = 900;
+
+function usePresence(visible: boolean) {
+  const [presence, setPresence] = useState<{ rendered: boolean; motion: "initial" | "enter" | "exit" }>({ rendered: visible, motion: "initial" });
+
+  useEffect(() => {
+    let firstFrame = 0;
+    let revealFrame = 0;
+    let timeout = 0;
+
+    if (visible) {
+      // Paint newly mounted panels in their hidden position before revealing them.
+      // Keep the current position when reversing an unfinished exit transition.
+      setPresence((current) => current.rendered ? current : { rendered: true, motion: "initial" });
+      firstFrame = window.requestAnimationFrame(() => {
+        revealFrame = window.requestAnimationFrame(() => setPresence({ rendered: true, motion: "enter" }));
+      });
+    } else {
+      setPresence((current) => current.rendered ? { ...current, motion: "exit" } : current);
+      timeout = window.setTimeout(() => setPresence({ rendered: false, motion: "initial" }), exitDurationMs);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(revealFrame);
+      window.clearTimeout(timeout);
+    };
+  }, [visible]);
+
+  return presence;
+}
 
 const rowShapes: RowShape[] = [
   ...Array.from({ length: 10 }, (_, i) => ({
@@ -96,23 +131,34 @@ function IconAction({
   );
 }
 
+function PanelCollapse({ label, collapsed, controls, onClick }: { label: string; collapsed: boolean; controls: string; onClick: () => void }) {
+  return (
+    <button type="button" className="panel-collapse" aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`} aria-controls={controls} aria-expanded={!collapsed} onClick={onClick}>
+      <svg className="panel-toggle-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+        <path d="M3 8H13" />
+        <path className="panel-toggle-vertical" d="M8 3V13" />
+      </svg>
+    </button>
+  );
+}
+
+function PanelHeader({ icon, title, headingId, label, collapsed, controls, onToggle }: { icon: ReactNode; title: string; headingId: string; label: string; collapsed: boolean; controls: string; onToggle: () => void }) {
+  return <div className="panel-title">{icon}<h2 id={headingId}>{title}</h2><PanelCollapse label={label} collapsed={collapsed} controls={controls} onClick={onToggle} /></div>;
+}
+
+function PanelBody({ id, collapsed, className = "", children }: { id: string; collapsed: boolean; className?: string; children: ReactNode }) {
+  return (
+    <div className="panel-content" id={id} aria-hidden={collapsed} inert={collapsed}>
+      <div className="panel-content-inner"><div className={className}>{children}</div></div>
+    </div>
+  );
+}
+
 function Swatch({ kind }: { kind: string }) {
   return <span className={`swatch swatch-${kind}`} aria-hidden="true" />;
 }
 
-function MapCanvas({
-  layers,
-  selected,
-  onSelect,
-  placingPoint,
-  onPlacePoint,
-  start,
-  end,
-  route,
-  demo,
-  zoom,
-  center,
-}: {
+type MapCanvasProps = {
   layers: Record<LayerKey, boolean>;
   selected: SelectedFeature | null;
   onSelect: (feature: SelectedFeature) => void;
@@ -122,29 +168,20 @@ function MapCanvas({
   end: Point;
   route: DemoRoute | null;
   demo: boolean;
-  zoom: number;
-  center: Point;
-}) {
-  const width = 1440 / zoom;
-  const height = 810 / zoom;
-  const viewBox = `${center.x - width / 2} ${center.y - height / 2} ${width} ${height}`;
-  function handleMapClick(event: MouseEvent<SVGSVGElement>) {
-    if (!placingPoint) return;
-    const svg = event.currentTarget;
-    const matrix = svg.getScreenCTM();
-    if (!matrix) return;
-    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
-    onPlacePoint({ x: Math.round(point.x), y: Math.round(point.y) });
-  }
+  onRest: (zoom: number) => void;
+};
 
+const MapCanvas = memo(forwardRef<MapHandle, MapCanvasProps>(function MapCanvas({ layers, selected, onSelect, placingPoint, onPlacePoint, start, end, route, demo, onRest }, ref) {
+  const { canvas, camera, handlers } = useMapViewport(ref, placingPoint, onPlacePoint, onRest);
   return (
+    <div ref={canvas} className={`map-viewport ${placingPoint ? "is-placing-point" : ""}`} {...handlers}>
+      <div ref={camera} className="map-camera">
     <svg
-      className={`annotation-canvas ${placingPoint ? "is-placing-point" : ""}`}
-      viewBox={viewBox}
+      className="annotation-canvas"
+      viewBox="0 0 1440 810"
       preserveAspectRatio="xMidYMid slice"
       role="img"
-      aria-label="Demonstration vineyard annotations on a white map canvas"
-      onClick={handleMapClick}
+      aria-label="Demonstration vineyard annotations on a dark map canvas"
     >
       <defs>
         <pattern id="forbidden-hatch" width="8" height="8" patternTransform="rotate(38)" patternUnits="userSpaceOnUse">
@@ -156,10 +193,10 @@ function MapCanvas({
         </filter>
       </defs>
 
-      {!demo && <text x="720" y="405" textAnchor="middle" fill="#69766f" fontSize="19">Map geometry will appear when the API provides georeferenced layers.</text>}
+      {!demo && <text x="720" y="405" textAnchor="middle" fill="#c9d7ca" fontSize="19">Map geometry will appear when the API provides georeferenced layers.</text>}
 
-      {demo && layers.interrows && (
-        <g className="map-interrows">
+      {demo && (
+        <g className="map-layer map-interrows" data-visible={layers.interrows}>
           {rowShapes.filter((_, index) => index % 2 === 0).map((row) => (
             <path
               key={`area-${row.id}`}
@@ -180,8 +217,8 @@ function MapCanvas({
         </g>
       )}
 
-      {demo && layers.canopies && (
-        <g className="map-canopies">
+      {demo && (
+        <g className="map-layer map-canopies" data-visible={layers.canopies}>
           {rowShapes.map((row) =>
             Array.from({ length: 18 }, (_, index) => {
               const t = (index + 0.5) / 18;
@@ -211,8 +248,8 @@ function MapCanvas({
         </g>
       )}
 
-      {demo && layers.rows && (
-        <g className="map-rows">
+      {demo && (
+        <g className="map-layer map-rows" data-visible={layers.rows}>
           {rowShapes.map((row) => {
             const active = selected?.type === "row" && selected.rowId === row.id;
             return (
@@ -235,17 +272,17 @@ function MapCanvas({
         </g>
       )}
 
-      {demo && layers.forbidden && (
-        <path d="M922 131 L1073 171 L1100 283 L1076 345 L1028 340 L1032 259 L882 207 Z" fill="url(#forbidden-hatch)" stroke="#e25039" strokeWidth="2" />
+      {demo && (
+        <path className="map-layer" data-visible={layers.forbidden} d="M922 131 L1073 171 L1100 283 L1076 345 L1028 340 L1032 259 L882 207 Z" fill="url(#forbidden-hatch)" stroke="#e25039" strokeWidth="2" />
       )}
-      {demo && layers.passages && (
-        <g stroke="#a4bd1f" strokeWidth="2" strokeDasharray="7 4" fill="#d4ef5b22">
+      {demo && (
+        <g className="map-layer" data-visible={layers.passages} stroke="#a4bd1f" strokeWidth="2" strokeDasharray="7 4" fill="#d4ef5b22">
           <path d="M280 480 L317 489 L305 542 L268 532 Z" />
           <path d="M1000 565 L1040 575 L1030 621 L990 609 Z" />
         </g>
       )}
-      {demo && layers.waste && (
-        <g>
+      {demo && (
+        <g className="map-layer" data-visible={layers.waste}>
           {wasteBoxes.map((box, index) => (
             <rect
               key={index}
@@ -268,14 +305,14 @@ function MapCanvas({
           ))}
         </g>
       )}
-      {demo && layers.route && route && (
-        <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+      {demo && route && (
+        <g className="map-layer map-route" data-visible={layers.route} fill="none" strokeLinecap="round" strokeLinejoin="round">
           <polyline points={route.points.map((point) => `${point.x},${point.y}`).join(" ")} stroke="#377efb" strokeWidth="7" strokeOpacity=".17" filter="url(#route-shadow)" />
           <polyline points={route.points.map((point) => `${point.x},${point.y}`).join(" ")} stroke="#438bff" strokeWidth="3.5" />
         </g>
       )}
-      {demo && layers.inspection && (
-        <g>
+      {demo && (
+        <g className="map-layer" data-visible={layers.inspection}>
           {inspectionPoints.map((point, index) => (
             <circle
               key={point.id}
@@ -310,15 +347,20 @@ function MapCanvas({
         <text x="37" y="4.5" textAnchor="middle" fontSize="12" fill="white" fontWeight="700">End</text>
       </g>}
     </svg>
+      </div>
+    </div>
   );
-}
+}));
 
 export default function VineyardWorkspace() {
+  const [introPhase, setIntroPhase] = useState<"waiting" | "showing" | "logo-leaving" | "screen-leaving" | "done">("waiting");
+  const [logoLoaded, setLogoLoaded] = useState(false);
   const [data, setData] = useState<VineyardData>(demoVineyard);
   const [layers, setLayers] = useState(initialLayerVisibility);
   const [selected, setSelected] = useState<SelectedFeature | null>({ type: "row", title: "Selected Row", vineyardId: "V001", rowId: "V001_R014", lengthM: 82.4, structure: "disrupted" });
   const [panelsVisible, setPanelsVisible] = useState(true);
   const [plannerOpen, setPlannerOpen] = useState(false);
+  const [collapsedPanels, setCollapsedPanels] = useState({ layers: false, summary: false, selected: false, planner: false, legend: false });
   const [startPoint, setStartPoint] = useState<Point>(demoVineyard.organizerStart);
   const [endPoint, setEndPoint] = useState<Point>(demoVineyard.organizerStart);
   const [endCustomized, setEndCustomized] = useState(false);
@@ -327,21 +369,79 @@ export default function VineyardWorkspace() {
   const [route, setRoute] = useState<DemoRoute | null>(() => buildDemoRoute(demoVineyard.organizerStart, demoVineyard.organizerStart, "both"));
   const [routeBusy, setRouteBusy] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [center, setCenter] = useState<Point>({ x: 720, y: 405 });
+  const map = useRef<MapHandle>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [uploadName, setUploadName] = useState("");
+  const [uploadOpen, setUploadOpen] = useState(true);
+  const [uploadError, setUploadError] = useState("");
+  const [vineyardIdentity, setVineyardIdentity] = useState<VineyardIdentity>({ name: "", id: "" });
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
   const [apiError, setApiError] = useState("");
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [noticeSnapshot, setNoticeSnapshot] = useState("");
+  const uploadTrigger = useRef<HTMLButtonElement>(null);
   const workspace = useRef<HTMLElement>(null);
+  const datasetRevision = useRef(0);
+  const lastPointKind = useRef<"start" | "end">("start");
+  const siteReady = introPhase === "done";
+  const sceneReady = introPhase === "screen-leaving" || siteReady;
+  const mapReady = sceneReady && !uploadOpen;
+  const chromeVisible = siteReady && !uploadOpen && !placingPoint;
+  const uploadPresence = usePresence(sceneReady && uploadOpen);
+  const uploadActive = siteReady && uploadOpen;
+  const panelsActive = panelsVisible && chromeVisible;
+  const headerPresence = usePresence(chromeVisible);
+  const panelsPresence = usePresence(panelsActive);
+  const selectedPresence = usePresence(panelsActive && !plannerOpen);
+  const plannerPresence = usePresence(panelsActive && plannerOpen);
+  const pickerPresence = usePresence(Boolean(placingPoint) && !uploadOpen);
+  const toastPresence = usePresence(Boolean(message || apiError) && !uploadOpen);
+  const hintPresence = usePresence(!panelsVisible && chromeVisible);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setIntroPhase("done");
+      return;
+    }
+    if (!logoLoaded) return;
+
+    let firstFrame = 0;
+    let revealFrame = 0;
+    let leaveLogo = 0;
+    let revealSite = 0;
+    let finish = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      revealFrame = window.requestAnimationFrame(() => {
+        setIntroPhase("showing");
+        leaveLogo = window.setTimeout(() => setIntroPhase("logo-leaving"), 2300);
+        revealSite = window.setTimeout(() => setIntroPhase("screen-leaving"), 3500);
+        finish = window.setTimeout(() => setIntroPhase("done"), 4600);
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(revealFrame);
+      window.clearTimeout(leaveLogo);
+      window.clearTimeout(revealSite);
+      window.clearTimeout(finish);
+    };
+  }, [logoLoaded]);
+
+  function togglePanel(panel: keyof typeof collapsedPanels) {
+    setCollapsedPanels((current) => ({ ...current, [panel]: !current[panel] }));
+  }
+
+  useEffect(() => {
+    if (message || apiError) setNoticeSnapshot(apiError || message);
+  }, [message, apiError]);
 
   useEffect(() => {
     let alive = true;
+    const revision = datasetRevision.current;
     loadVineyard()
       .then((payload) => {
-        if (!alive) return;
+        if (!alive || datasetRevision.current !== revision) return;
         setData(payload);
         if (payload.source === "api") {
           setSelected(null);
@@ -351,7 +451,7 @@ export default function VineyardWorkspace() {
           setRoute(null);
         }
       })
-      .catch((error: unknown) => { if (alive) setApiError(error instanceof Error ? error.message : "Data could not be loaded."); });
+      .catch((error: unknown) => { if (alive && datasetRevision.current === revision) setApiError(error instanceof Error ? error.message : "Data could not be loaded."); });
     return () => { alive = false; };
   }, []);
 
@@ -395,21 +495,46 @@ export default function VineyardWorkspace() {
     }
   }
 
-  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    event.target.value = "";
+  const closeUpload = useCallback(() => {
+    if (!processing) setUploadOpen(false);
+  }, [processing]);
+
+  useEffect(() => {
+    if (uploadOpen || !siteReady) return;
+    const timeout = window.setTimeout(() => uploadTrigger.current?.focus({ preventScroll: true }), exitDurationMs);
+    return () => window.clearTimeout(timeout);
+  }, [uploadOpen, siteReady]);
+
+  function openUpload() {
+    setUploadError("");
+    setMessage("");
+    setPlacingPoint(null);
+    setUploadOpen(true);
+  }
+
+  async function handleUpload(file: File, identity: VineyardIdentity) {
+    if (processing) return;
     if (!/\.tiff?$/i.test(file.name)) {
-      setMessage("Choose a GeoTIFF file (.tif or .tiff).");
+      setUploadError("Choose a GeoTIFF file (.tif or .tiff).");
       return;
     }
+    if (file.size === 0) {
+      setUploadError("This file is empty. Choose another GeoTIFF map.");
+      return;
+    }
+    datasetRevision.current += 1;
+    setApiError("");
     setUploadName(file.name);
+    setUploadError("");
     setMessage("");
     setProgress(0);
     setProcessing(true);
     try {
-      const result = await uploadAndAnalyze(file, setProgress);
-      setData(result);
+      const result = await uploadAndAnalyze(file, setProgress, identity);
+      setData({ ...result, name: identity.name });
+      setVineyardIdentity(identity);
+      map.current?.reset();
+      setZoom(1);
       if (result.source === "api") {
         setSelected(null);
         setStartPoint(result.organizerStart);
@@ -417,21 +542,22 @@ export default function VineyardWorkspace() {
         setEndCustomized(false);
         setRoute(null);
       }
-      setMessage(isDemoMode() ? "UI preview complete. This file has not been analyzed; connect the processing API for real results." : "Analysis complete.");
+      setUploadOpen(false);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The upload could not be processed.");
+      setUploadError(error instanceof Error ? error.message : "The upload could not be processed. Try again.");
     } finally {
       setProcessing(false);
     }
   }
 
   function beginPlacingPoint(kind: "start" | "end") {
+    lastPointKind.current = kind;
     setPlacingPoint(kind);
     setPlannerOpen(false);
     setMessage("");
   }
 
-  function placePoint(point: Point) {
+  const placePoint = useCallback((point: Point) => {
     if (placingPoint === "start") {
       setStartPoint(point);
       if (!endCustomized) setEndPoint(point);
@@ -443,7 +569,7 @@ export default function VineyardWorkspace() {
     setPlacingPoint(null);
     setPlannerOpen(true);
     setMessage(placingPoint === "start" ? "Starting point selected. Build the route to update it." : "End point selected. Build the route to update it.");
-  }
+  }, [placingPoint, endCustomized]);
 
   function changeTargetMode(mode: TargetMode) {
     setTargetMode(mode);
@@ -474,25 +600,23 @@ export default function VineyardWorkspace() {
 
   return (
     <main className="workspace" ref={workspace}>
+      <div className={`app-stage ${mapReady ? "is-revealing" : ""}`} aria-hidden={!siteReady || uploadOpen} inert={!siteReady || uploadOpen}>
       <MapCanvas
+        ref={map}
         layers={layers}
         selected={selected}
-        onSelect={(feature) => setSelected(feature)}
+        onSelect={setSelected}
         placingPoint={placingPoint}
         onPlacePoint={placePoint}
         start={startPoint}
         end={endPoint}
         route={route}
         demo={data.source === "demo"}
-        zoom={zoom}
-        center={center}
+        onRest={setZoom}
       />
 
-      {!placingPoint && <header className="topbar absolute inset-x-0 top-0 z-30 flex items-center justify-between">
-        <div className="brand flex items-center gap-3">
-          <span className="brand-mark"><Leaf size={22} strokeWidth={2.4} /></span>
-          <span>VINEYARD INSPECTOR</span>
-        </div>
+      {headerPresence.rendered && <header className="topbar absolute inset-x-0 top-0 z-30 flex items-center justify-between" data-motion={headerPresence.motion} aria-hidden={!chromeVisible} inert={!chromeVisible}>
+        <Brand />
         <div className="top-actions flex items-center gap-3">
           <IconAction label={panelsVisible ? "Hide panels" : "Show panels"} onClick={() => setPanelsVisible((value) => !value)} pressed={!panelsVisible}>
             {panelsVisible ? <PanelLeftClose size={23} strokeWidth={1.8} /> : <PanelLeftOpen size={23} strokeWidth={1.8} />}
@@ -500,27 +624,23 @@ export default function VineyardWorkspace() {
           <IconAction label={fullscreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullscreen} pressed={fullscreen}>
             {fullscreen ? <Minimize2 size={22} strokeWidth={1.9} /> : <Expand size={22} strokeWidth={1.9} />}
           </IconAction>
-          <button type="button" className="upload-button flex items-center justify-center gap-3" aria-label="Upload GeoTIFF" onClick={() => fileInput.current?.click()}>
-            <Upload size={22} strokeWidth={1.9} /> <span>Upload GeoTIFF</span>
+          <button ref={uploadTrigger} type="button" className="upload-button flex items-center justify-center gap-3" aria-label="Upload map" onClick={openUpload}>
+            <Upload size={22} strokeWidth={1.9} /> <span>Upload Map</span>
           </button>
-          <input ref={fileInput} type="file" accept=".tif,.tiff,image/tiff" className="hidden" onChange={handleFile} tabIndex={-1} aria-hidden="true" />
         </div>
       </header>}
 
-      {panelsVisible && !placingPoint && (
+      {panelsPresence.rendered && (
         <>
-          <section className="identity-block" aria-label="Vineyard status">
-            <div className={`status-pill flex items-center gap-2 ${processing ? "is-processing" : ""}`}>
-              <span className="status-dot" />{processing ? "Processing…" : "Analysis Complete"}
-            </div>
+          <section className="identity-block" aria-label="Vineyard information" data-motion={panelsPresence.motion} aria-hidden={!panelsActive} inert={!panelsActive}>
             <h1>{data.name}</h1>
-            <div className="identity-meta flex items-center gap-2"><p>Aerial inspection <span>·</span> {data.crs}</p>{data.source === "demo" && <div className="demo-tag">DEMO DATA</div>}</div>
+            <div className="identity-meta flex items-center gap-2"><p>Aerial inspection <span>·</span> {data.crs}{vineyardIdentity.id && <><span>·</span>{vineyardIdentity.id}</>}</p>{data.source === "demo" && <div className="demo-tag">DEMO DATA</div>}</div>
             {uploadName && <p className="uploaded-name" title={uploadName}>{uploadName}</p>}
           </section>
 
-          <section className="panel layers-panel" aria-labelledby="layers-heading">
-            <div className="panel-title flex items-center gap-3"><Layers3 size={22} fill="white" strokeWidth={1.6} /><h2 id="layers-heading">Layers</h2></div>
-            <div className="layer-list">
+          <section className="panel layers-panel" aria-labelledby="layers-heading" data-motion={panelsPresence.motion} data-collapsed={collapsedPanels.layers} aria-hidden={!panelsActive} inert={!panelsActive}>
+            <PanelHeader icon={<Layers3 size={22} fill="white" strokeWidth={1.6} />} title="Layers" headingId="layers-heading" label="layers" collapsed={collapsedPanels.layers} controls="layers-content" onToggle={() => togglePanel("layers")} />
+            <PanelBody id="layers-content" collapsed={collapsedPanels.layers} className="layer-list">
               {layerDefinitions.map(({ key, label, swatch }) => (
                 <label key={key} className={`layer-row flex items-center ${layers[key] ? "" : "layer-disabled"}`}>
                   <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} className="layer-native-check" />
@@ -529,24 +649,25 @@ export default function VineyardWorkspace() {
                   <Swatch kind={swatch} />
                 </label>
               ))}
-            </div>
+            </PanelBody>
           </section>
 
-          <div className="right-panel-stack">
-          <section className="panel summary-panel" aria-labelledby="summary-heading">
-            <div className="panel-title flex items-center gap-3"><BarChart3 size={23} fill="white" strokeWidth={1.5} /><h2 id="summary-heading">Vineyard Summary</h2></div>
-            <div className="summary-grid grid grid-cols-2 gap-2">
+          <aside className="right-panels" aria-label="Vineyard panels" aria-hidden={!panelsActive} inert={!panelsActive}>
+          <section className="panel summary-panel" aria-labelledby="summary-heading" data-motion={panelsPresence.motion} data-collapsed={collapsedPanels.summary} aria-hidden={!panelsActive} inert={!panelsActive}>
+            <PanelHeader icon={<BarChart3 size={22} fill="white" strokeWidth={1.5} />} title="Vineyard Summary" headingId="summary-heading" label="vineyard summary" collapsed={collapsedPanels.summary} controls="summary-content" onToggle={() => togglePanel("summary")} />
+            <PanelBody id="summary-content" collapsed={collapsedPanels.summary} className="summary-grid grid grid-cols-2 gap-2">
               <SummaryMetric icon={<Layers3 />} label="Blocks" value={formatValue(data.summary.blocks)} />
               <SummaryMetric icon={<Rows3 />} label="Rows" value={formatValue(data.summary.rows)} />
               <SummaryMetric icon={<Leaf />} label="Canopy Area" value={formatValue(data.summary.canopyHa, " ha")} />
               <SummaryMetric icon={<ScanLine />} label="Inter-row Area" value={formatValue(data.summary.interrowHa, " ha")} />
               <SummaryMetric icon={<Route />} label="Total Row Length" value={formatValue(data.summary.totalRowKm, " km")} compact />
               <SummaryMetric icon={<Route />} label="Route" value={formatValue(routeLengthKm, " km")} />
-            </div>
+            </PanelBody>
           </section>
 
-          {!plannerOpen && <section className="panel selected-panel" aria-labelledby="selected-heading">
-            <div className="panel-title flex items-center gap-3"><Leaf size={23} fill="white" strokeWidth={1.3} /><h2 id="selected-heading">{selected?.title || "Selected Feature"}</h2></div>
+          {selectedPresence.rendered && <section className="panel selected-panel" aria-labelledby="selected-heading" data-motion={selectedPresence.motion} data-collapsed={collapsedPanels.selected} aria-hidden={!(panelsActive && !plannerOpen)} inert={!(panelsActive && !plannerOpen)}>
+            <PanelHeader icon={<Leaf size={22} fill="white" strokeWidth={1.3} />} title={selected?.title || "Selected Feature"} headingId="selected-heading" label="selected feature" collapsed={collapsedPanels.selected} controls="selected-content" onToggle={() => togglePanel("selected")} />
+            <PanelBody id="selected-content" collapsed={collapsedPanels.selected}>
             {selected ? (
               <div className="detail-list">
                 <Detail label="Vineyard ID" value={selected.vineyardId} />
@@ -556,19 +677,15 @@ export default function VineyardWorkspace() {
                 {!selectedRows && <Detail label="Details" value={selected.note || "No attributes available"} />}
               </div>
             ) : <p className="empty-selection">Click an annotation to inspect it.</p>}
+            </PanelBody>
           </section>}
-          </div>
 
-          {plannerOpen && (
-            <section className="panel route-planner" id="route-planner" aria-labelledby="planner-heading">
-              <div className="panel-title planner-title flex items-center gap-3">
-                <Route size={25} strokeWidth={1.6} />
-                <h2 id="planner-heading">Route Planner</h2>
-                <button type="button" className="collapse-button" onClick={() => setPlannerOpen(false)} aria-label="Close route planner">
-                  <Minus size={20} />
-                </button>
-              </div>
-              <div className="planner-body">
+          </aside>
+
+          {plannerPresence.rendered && (
+            <section className="panel route-planner" id="route-planner" aria-labelledby="planner-heading" data-motion={plannerPresence.motion} data-collapsed={collapsedPanels.planner} aria-hidden={!(panelsActive && plannerOpen)} inert={!(panelsActive && plannerOpen)}>
+              <PanelHeader icon={<Route size={22} strokeWidth={1.6} />} title="Route Planner" headingId="planner-heading" label="route planner" collapsed={collapsedPanels.planner} controls="planner-content" onToggle={() => togglePanel("planner")} />
+              <PanelBody id="planner-content" collapsed={collapsedPanels.planner} className="planner-body">
                   <p className="field-label">Route Endpoints</p>
                   <div className="segmented two flex gap-1">
                     <button type="button" className="choice endpoint-choice flex items-center justify-center gap-2" onClick={() => beginPlacingPoint("start")}>Select Starting Point</button>
@@ -584,44 +701,55 @@ export default function VineyardWorkspace() {
                     <Route size={24} strokeWidth={1.8} />{routeBusy ? "Building Route…" : "Build Optimal Route"}
                   </button>
                   <p className="route-caption">{route ? route.targetIds.length : visibleTargets} targets <span>·</span> {route ? (route.returnsToStart ? "Returns to start" : "Ends at selected point") : "Ready to build"}</p>
-                </div>
+              </PanelBody>
             </section>
           )}
 
-          <div className="map-controls flex flex-col gap-1" aria-label="Map controls">
-            <IconAction label="Zoom in" onClick={() => setZoom((value) => Math.min(2.4, +(value + 0.2).toFixed(1)))}><Plus size={25} /></IconAction>
-            <IconAction label="Zoom out" onClick={() => setZoom((value) => Math.max(0.7, +(value - 0.2).toFixed(1)))}><Minus size={25} /></IconAction>
-            <IconAction label="Go to start point" title="Go to start point" onClick={() => { setCenter(startPoint); setZoom(1.5); }}><Navigation size={22} fill="white" /></IconAction>
+          <div className="map-controls flex flex-col gap-1" aria-label="Map controls" data-motion={panelsPresence.motion} aria-hidden={!panelsActive} inert={!panelsActive}>
+            <IconAction label="Zoom in" onClick={() => map.current?.zoomBy(0.2)}><Plus size={25} /></IconAction>
+            <IconAction label="Zoom out" onClick={() => map.current?.zoomBy(-0.2)}><Minus size={25} /></IconAction>
+            <IconAction label="Go to start point" title="Go to start point" onClick={() => map.current?.flyTo(startPoint, 1.5)}><Navigation size={22} fill="white" /></IconAction>
           </div>
 
-          <section className="legend panel flex items-center gap-4" aria-label="Map legend">
-            {layerDefinitions.map((layer) => (
-              <div key={layer.key} className="legend-item flex items-center gap-2"><Swatch kind={layer.swatch} /><span>{layer.legendLabel}</span></div>
+          <section className="legend panel flex items-center gap-4" aria-label="Map legend" data-motion={panelsPresence.motion} data-collapsed={collapsedPanels.legend} aria-hidden={!panelsActive} inert={!panelsActive}>
+            <span className="legend-collapsed-label" aria-hidden={!collapsedPanels.legend}>Legend</span>
+            <div className="legend-content flex items-center" id="legend-content" aria-hidden={collapsedPanels.legend} inert={collapsedPanels.legend}>
+            {layerDefinitions.slice(0, 6).map((layer) => (
+              <div key={layer.key} className="legend-item flex items-center gap-2" data-visible={layers[layer.key]} aria-hidden={!layers[layer.key]}><Swatch kind={layer.swatch} /><span>{layer.key === "interrows" ? "Inter-row Area" : layer.key === "inspection" ? "Inspection Point" : layer.key === "route" ? "Route" : layer.key === "canopies" ? "Canopy" : layer.key === "rows" ? "Row" : layer.label}</span></div>
             ))}
+            </div>
+            <PanelCollapse label="map legend" collapsed={collapsedPanels.legend} controls="legend-content" onClick={() => togglePanel("legend")} />
           </section>
-          <button type="button" className="plan-button flex items-center justify-center gap-3" aria-expanded={plannerOpen} aria-controls="route-planner" onClick={() => setPlannerOpen((value) => !value)}>
+          <button type="button" className="plan-button flex items-center justify-center gap-3" data-motion={panelsPresence.motion} aria-hidden={!panelsActive} inert={!panelsActive} aria-expanded={plannerOpen} aria-controls="route-planner" onClick={() => setPlannerOpen((value) => !value)}>
             <Route size={24} strokeWidth={1.8} />Plan Route
           </button>
-          <div className="scale" aria-label={`Map scale approximately ${Math.round(200 / zoom)} metres`}>
+          <div className="scale" aria-label={`Map scale approximately ${Math.round(200 / zoom)} metres`} data-motion={panelsPresence.motion} aria-hidden={!panelsActive}>
             <div className="scale-labels"><span>0</span><span>{Math.round(50 / zoom)}</span><span>{Math.round(100 / zoom)}</span><span>{Math.round(200 / zoom)} m</span></div>
             <div className="scale-rule"><i /><i /><i /><i /></div>
           </div>
         </>
       )}
 
-      {placingPoint && <div className="point-picker" role="status"><span>Click anywhere on the map to set the {placingPoint === "start" ? "starting" : "end"} point</span><button type="button" onClick={() => { setPlacingPoint(null); setPlannerOpen(true); }}>Cancel</button></div>}
+      {pickerPresence.rendered && <div className="point-picker" role="status" data-motion={pickerPresence.motion} aria-hidden={!placingPoint} inert={!placingPoint}><span>Click anywhere on the map to set the {(placingPoint || lastPointKind.current) === "start" ? "starting" : "end"} point</span><button type="button" onClick={() => { setPlacingPoint(null); setPlannerOpen(true); }}>Cancel</button></div>}
 
-      {(processing || message || apiError) && (
-        <div className="toast" role="status" aria-live="polite">
+      {toastPresence.rendered && (
+        <div className="toast" role="status" aria-live="polite" data-motion={toastPresence.motion} aria-hidden={!(processing || message || apiError)} inert={!(processing || message || apiError)}>
           {processing ? (
             <><div className="toast-top"><span>Processing {uploadName}</span><strong>{progress}%</strong></div><div className="progress-track"><div style={{ width: `${progress}%` }} /></div>{isDemoMode() && <small>Preview mode · no GeoTIFF analysis</small>}</>
           ) : (
-            <><span>{apiError || message}</span><button type="button" onClick={() => { setMessage(""); setApiError(""); }} aria-label="Dismiss message"><X size={16} /></button></>
+            <><span>{apiError || message || noticeSnapshot}</span><button type="button" onClick={() => { setMessage(""); setApiError(""); }} aria-label="Dismiss message"><X size={16} /></button></>
           )}
         </div>
       )}
 
-      {!panelsVisible && <div className="hidden-panels-hint">Panels hidden · use the top control to restore</div>}
+      {hintPresence.rendered && <div className="hidden-panels-hint" data-motion={hintPresence.motion} aria-hidden={panelsVisible}>Panels hidden · use the top control to restore</div>}
+      </div>
+      {uploadPresence.rendered && <UploadScreen active={uploadActive} motion={uploadPresence.motion} busy={processing} progress={progress} filename={uploadName} error={uploadError} demo={isDemoMode()} identity={vineyardIdentity} onUpload={handleUpload} onClose={closeUpload} />}
+      {introPhase !== "done" && (
+        <div className="intro-screen" data-phase={introPhase} role="status" aria-label="Loading TRASHOPOLY">
+          <Image className="intro-logo" src="/brand/trashopoly-logo.png" alt="TRASHOPOLY — Smart Vineyard Routing" width={2021} height={778} loading="eager" fetchPriority="high" unoptimized onLoad={() => setLogoLoaded(true)} onError={() => setIntroPhase("done")} />
+        </div>
+      )}
     </main>
   );
 }

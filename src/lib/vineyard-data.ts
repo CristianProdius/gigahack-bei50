@@ -56,17 +56,16 @@ export const demoVineyard: VineyardData = {
 export const layerDefinitions: {
   key: LayerKey;
   label: string;
-  legendLabel: string;
   swatch: string;
 }[] = [
-  { key: "canopies", label: "Canopies", legendLabel: "Canopy", swatch: "canopy" },
-  { key: "rows", label: "Rows", legendLabel: "Row", swatch: "row" },
-  { key: "interrows", label: "Inter-row Areas", legendLabel: "Inter-row Area", swatch: "interrow" },
-  { key: "waste", label: "Waste", legendLabel: "Waste", swatch: "waste" },
-  { key: "inspection", label: "Inspection Points", legendLabel: "Inspection Point", swatch: "inspection" },
-  { key: "route", label: "Walking Route", legendLabel: "Route", swatch: "route" },
-  { key: "forbidden", label: "Forbidden Zones", legendLabel: "Forbidden Zone", swatch: "forbidden" },
-  { key: "passages", label: "Authorized Passages", legendLabel: "Authorized Passage", swatch: "passage" },
+  { key: "canopies", label: "Canopies", swatch: "canopy" },
+  { key: "rows", label: "Rows", swatch: "row" },
+  { key: "interrows", label: "Inter-row Areas", swatch: "interrow" },
+  { key: "waste", label: "Waste", swatch: "waste" },
+  { key: "inspection", label: "Inspection Points", swatch: "inspection" },
+  { key: "route", label: "Walking Route", swatch: "route" },
+  { key: "forbidden", label: "Forbidden Zones", swatch: "forbidden" },
+  { key: "passages", label: "Authorized Passages", swatch: "passage" },
 ];
 
 export const initialLayerVisibility: Record<LayerKey, boolean> = {

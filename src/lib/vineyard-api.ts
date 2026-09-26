@@ -28,6 +28,7 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export async function uploadAndAnalyze(
   file: File,
   onProgress: (progress: number) => void,
+  identity?: { name: string; id: string },
 ): Promise<VineyardData> {
   if (!apiBase) {
     // A UI preview only. No GeoTIFF parsing or AI analysis occurs here.
@@ -40,6 +41,10 @@ export async function uploadAndAnalyze(
 
   const formData = new FormData();
   formData.append("file", file);
+  if (identity) {
+    formData.append("vineyard_name", identity.name);
+    formData.append("vineyard_id", identity.id);
+  }
   const upload = await fetch(`${apiBase}/analyses`, { method: "POST", body: formData });
   if (!upload.ok) throw new Error("The GeoTIFF could not be uploaded.");
   const { id } = (await upload.json()) as Pick<Job, "id">;

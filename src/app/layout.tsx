@@ -7,8 +7,8 @@ import "@fontsource/manrope/800.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Vineyard Inspector",
-  description: "Explore vineyard annotations, measurements, and inspection routes.",
+  title: "TRASHOPOLY · Smart Vineyard Routing",
+  description: "TRASHOPOLY — explore vineyard maps, inspect annotations, and plan smart vineyard routes.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
